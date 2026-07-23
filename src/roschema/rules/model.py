@@ -64,7 +64,13 @@ class Rule:
 
 @dataclass(frozen=True)
 class Finding:
-    """One reported rule violation."""
+    """One reported rule violation.
+
+    ``level`` is the primary (most wire-significant) level for display/JSON;
+    ``levels`` is the rule's full level set, used for ``--level`` filtering.
+    ``inline_ignores`` are the rule IDs suppressed by a trailing
+    ``# roschema: ignore=...`` comment on the new-side member.
+    """
 
     rule: str
     severity: str
@@ -78,6 +84,13 @@ class Finding:
     new_file: str | None
     new_line: int | None
     suppressed: bool = False
+    levels: tuple[str, ...] = ()
+    inline_ignores: tuple[str, ...] = ()
+
+    @property
+    def package(self) -> str:
+        """Owning package name (first segment of the interface key)."""
+        return self.interface.split("/", 1)[0]
 
     @property
     def qualified_target(self) -> str:

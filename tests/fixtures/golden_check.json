@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "findings": [
+    {
+      "rule": "RS003",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/action/Move",
+      "section": "goal",
+      "target": "speed",
+      "message": "type changed float32 -> float64",
+      "old": {
+        "file": "demo_msgs/action/Move.action",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/action/Move.action",
+        "line": 1
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS006",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/ArrayKind",
+      "section": "message",
+      "target": "a",
+      "message": "array kind changed int32[] -> int32[3]",
+      "old": {
+        "file": "demo_msgs/msg/ArrayKind.msg",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/msg/ArrayKind.msg",
+        "line": 1
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS008",
+      "severity": "warn",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/BoundLoose",
+      "section": "message",
+      "target": "a",
+      "message": "bound loosened uint8[<=4] -> uint8[<=9]",
+      "old": {
+        "file": "demo_msgs/msg/BoundLoose.msg",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/msg/BoundLoose.msg",
+        "line": 1
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS007",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/BoundTight",
+      "section": "message",
+      "target": "s",
+      "message": "bound tightened string<=64 -> string<=16",
+      "old": {
+        "file": "demo_msgs/msg/BoundTight.msg",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/msg/BoundTight.msg",
+        "line": 1
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS002",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/FieldAdded",
+      "section": "message",
+      "target": "b",
+      "message": "field 'b' added",
+      "old": null,
+      "new": {
+        "file": "demo_msgs/msg/FieldAdded.msg",
+        "line": 2
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS001",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/FieldRemoved",
+      "section": "message",
+      "target": "b",
+      "message": "field 'b' removed",
+      "old": {
+        "file": "demo_msgs/msg/FieldRemoved.msg",
+        "line": 2
+      },
+      "new": null,
+      "suppressed": false
+    },
+    {
+      "rule": "RS040",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/Removed",
+      "section": null,
+      "target": "",
+      "message": "interface demo_msgs/msg/Removed removed",
+      "old": {
+        "file": "demo_msgs/msg/Removed.msg",
+        "line": null
+      },
+      "new": null,
+      "suppressed": false
+    },
+    {
+      "rule": "RS005",
+      "severity": "error",
+      "level": "source",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/Renamed",
+      "section": "message",
+      "target": "yaw",
+      "message": "field renamed 'theta' -> 'yaw'",
+      "old": {
+        "file": "demo_msgs/msg/Renamed.msg",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/msg/Renamed.msg",
+        "line": 1
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS004",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/Reordered",
+      "section": "message",
+      "target": "",
+      "message": "fields reordered: a, b -> b, a",
+      "old": null,
+      "new": null,
+      "suppressed": false
+    },
+    {
+      "rule": "RS003",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/Suppressed",
+      "section": "message",
+      "target": "x",
+      "message": "type changed float32 -> float64",
+      "old": {
+        "file": "demo_msgs/msg/Suppressed.msg",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/msg/Suppressed.msg",
+        "line": 1
+      },
+      "suppressed": true
+    },
+    {
+      "rule": "RS003",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/TypeChanged",
+      "section": "message",
+      "target": "x",
+      "message": "type changed float32 -> float64",
+      "old": {
+        "file": "demo_msgs/msg/TypeChanged.msg",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/msg/TypeChanged.msg",
+        "line": 1
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS003",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/srv/DoThing",
+      "section": "response",
+      "target": "result",
+      "message": "type changed float32 -> float64",
+      "old": {
+        "file": "demo_msgs/srv/DoThing.srv",
+        "line": 3
+      },
+      "new": {
+        "file": "demo_msgs/srv/DoThing.srv",
+        "line": 3
+      },
+      "suppressed": false
+    }
+  ],
+  "summary": {
+    "total": 11,
+    "errors": 10,
+    "warnings": 1,
+    "suppressed": 1,
+    "advisories": {
+      "demo_msgs": "MAJOR"
+    }
+  }
+}

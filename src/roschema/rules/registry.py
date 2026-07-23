@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import re
+
 from ..differ import ChangeEvent, ChangeType
 from .breaking import ALL_BREAKING_RULES
 from .model import Finding, Rule
+
+_IGNORE_RE = re.compile(r"roschema:\s*ignore\s*=\s*([\w,\s]+)")
 
 
 def all_rules() -> tuple[Rule, ...]:
@@ -48,4 +52,16 @@ def _build(rule: Rule, event: ChangeEvent) -> Finding:
         old_line=getattr(event.old, "line", None),
         new_file=getattr(event.new, "source_file", None),
         new_line=getattr(event.new, "line", None),
+        levels=rule.levels,
+        inline_ignores=_inline_ignores(getattr(event.new, "trailing_comment", None)),
     )
+
+
+def _inline_ignores(comment: str | None) -> tuple[str, ...]:
+    """Parse ``# roschema: ignore=RS001,RS002`` from a trailing comment."""
+    if not comment:
+        return ()
+    match = _IGNORE_RE.search(comment)
+    if not match:
+        return ()
+    return tuple(part.strip() for part in match.group(1).split(",") if part.strip())

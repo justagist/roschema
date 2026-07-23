@@ -9,7 +9,7 @@ description = "Breaking-change detection, linting and formatting for ROS 2 inter
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
-authors = [{ name = "roschema contributors" }]
+authors = [{ name = "Saif Sidhik", email = "saif.sidhik@helloleap.ai" }]
 keywords = ["ros2", "ros", "interface", "msg", "srv", "action", "breaking-change", "lint"]
 classifiers = [
     "Development Status :: 3 - Alpha",

@@ -1,0 +1,5 @@
+float64 speed
+---
+bool ok
+---
+float32 progress

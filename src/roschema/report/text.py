@@ -5,41 +5,47 @@ from __future__ import annotations
 from rich.console import Console
 
 from ..rules import LEVEL_LABEL, Finding
+from .summary import summarize
 
 _SEVERITY_STYLE = {"error": "red", "warn": "yellow"}
+_BUMP_STYLE = {"MAJOR": "red", "MINOR": "yellow", "PATCH": "green"}
 
 
 def render_text(
     findings: list[Finding], console: Console, new_source: str, old_source: str
 ) -> None:
-    """Render findings to ``console``.
+    """Render findings to ``console`` with a summary and semver advisories.
 
-    Args:
-        findings: Findings to display, already in report order.
-        console: Rich console to print to.
-        new_source: Label for the interfaces being checked.
-        old_source: Label for the baseline they are compared against.
+    Suppressed findings are not listed individually but are counted.
     """
     console.print(f"[bold]checking[/bold] {new_source}  [dim]against[/dim]  {old_source}")
-    if not findings:
+    reported = [f for f in findings if not f.suppressed]
+
+    if not reported:
         console.print("[green]no breaking changes found[/green]")
+        _print_suppressed(console, findings)
         return
 
     by_package: dict[str, list[Finding]] = {}
-    for finding in findings:
-        by_package.setdefault(finding.interface.split("/", 1)[0], []).append(finding)
-
+    for finding in reported:
+        by_package.setdefault(finding.package, []).append(finding)
     for package in sorted(by_package):
         console.print(f"\n[bold cyan]{package}[/bold cyan]")
         for finding in by_package[package]:
             _print_finding(console, finding)
 
-    errors = sum(1 for f in findings if f.severity == "error")
-    warnings = sum(1 for f in findings if f.severity == "warn")
+    summary = summarize(findings)
     console.print(
-        f"\n[bold]{len(findings)} finding(s):[/bold] "
-        f"[red]{errors} error(s)[/red], [yellow]{warnings} warning(s)[/yellow]"
+        f"\n[bold]{summary.total} finding(s):[/bold] "
+        f"[red]{summary.errors} error(s)[/red], [yellow]{summary.warnings} warning(s)[/yellow]"
     )
+    _print_suppressed(console, findings)
+    for advisory in summary.advisories:
+        style = _BUMP_STYLE.get(advisory.bump, "white")
+        console.print(
+            f"  [{style}]{advisory.package}: suggests {advisory.bump} version bump[/{style}] "
+            f"[dim]({advisory.reason})[/dim]"
+        )
 
 
 def _print_finding(console: Console, finding: Finding) -> None:
@@ -52,6 +58,12 @@ def _print_finding(console: Console, finding: Finding) -> None:
     location = _location(finding)
     if location:
         console.print(f"      [dim]{location}[/dim]")
+
+
+def _print_suppressed(console: Console, findings: list[Finding]) -> None:
+    count = sum(1 for f in findings if f.suppressed)
+    if count:
+        console.print(f"[dim]{count} finding(s) suppressed[/dim]")
 
 
 def _location(finding: Finding) -> str:

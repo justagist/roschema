@@ -64,12 +64,12 @@ def test_check_exit_zero_flag(tmp_path):
     assert "RS003" in result.stdout
 
 
-def test_check_unsupported_format_exits_2(tmp_path):
+def test_check_unknown_format_exits_2(tmp_path):
     write_package(tmp_path / "old", "my_msgs", msgs={"Pose": "float32 t\n"})
     write_package(tmp_path / "new", "my_msgs", msgs={"Pose": "float32 t\n"})
     result = runner.invoke(
         app,
-        ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old"), "--format", "json"],
+        ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old"), "--format", "xml"],
     )
     assert result.exit_code == 2
 

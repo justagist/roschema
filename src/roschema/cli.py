@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
 
+from .config import LEVEL_BUNDLES, ConfigError, finalize_findings, load_config
 from .differ import diff_interfaces
 from .discovery import (
     Resolution,
@@ -17,8 +19,8 @@ from .discovery import (
 )
 from .loader import load_interfaces
 from .parser import ParseError
-from .report import render_text
-from .rules import evaluate
+from .report import build_github, build_json, render_text
+from .rules import Finding, evaluate
 from .vfs import RealFS, VfsError
 
 app = typer.Typer(
@@ -46,8 +48,16 @@ def check(
         typer.Option("--against", help="Baseline: git ref or directory path."),
     ] = ...,  # type: ignore[assignment]
     fmt: Annotated[
-        str, typer.Option("--format", help="Output format (text).")
+        str, typer.Option("--format", help="Output format: text, json or github.")
     ] = "text",
+    level: Annotated[
+        str | None,
+        typer.Option("--level", help="Reporting level: wire, source, introspection, behavior."),
+    ] = None,
+    config_path: Annotated[
+        Path | None,
+        typer.Option("--config", help="Explicit config file (roschema.toml or pyproject.toml)."),
+    ] = None,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
@@ -57,8 +67,11 @@ def check(
     ] = None,
 ) -> None:
     """Check interface changes against a baseline for breaking changes."""
-    if fmt != "text":
-        err_console.print(f"[red]error:[/red] format {fmt!r} is not supported yet (Phase 4)")
+    if fmt not in ("text", "json", "github"):
+        err_console.print(f"[red]error:[/red] unknown format {fmt!r}")
+        raise typer.Exit(code=2)
+    if level is not None and level not in LEVEL_BUNDLES:
+        err_console.print(f"[red]error:[/red] unknown level {level!r}")
         raise typer.Exit(code=2)
 
     try:
@@ -66,19 +79,32 @@ def check(
         if not isinstance(new_res.vfs, RealFS):
             raise VfsError("check target must be a directory or workspace")
         old_res = resolve_baseline(against, new_res.vfs.root)
+        config = load_config(new_res.vfs.root, new_res.packages, config_path)
         new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, exclude or []))
         old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, exclude or []))
-    except (VfsError, ParseError) as exc:
+    except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    findings = evaluate(diff_interfaces(old_ifaces, new_ifaces))
-    render_text(findings, console, new_res.source, old_res.source)
+    findings = finalize_findings(
+        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level
+    )
+    _emit(findings, fmt, new_res.source, old_res.source)
 
     if exit_zero:
         raise typer.Exit(code=0)
     has_error = any(f.severity == "error" and not f.suppressed for f in findings)
     raise typer.Exit(code=1 if has_error else 0)
+
+
+def _emit(findings: list[Finding], fmt: str, new_source: str, old_source: str) -> None:
+    if fmt == "json":
+        typer.echo(json.dumps(build_json(findings), indent=2))
+    elif fmt == "github":
+        for line in build_github(findings):
+            typer.echo(line)
+    else:
+        render_text(findings, console, new_source, old_source)
 
 
 @app.command()
