@@ -20,11 +20,11 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - name: Install
-        run: uv pip install --system -e '.[dev]'
+        run: uv sync --extra dev
       - name: Ruff
-        run: ruff check .
+        run: uv run ruff check .
       - name: Mypy
-        run: mypy --strict src
+        run: uv run mypy --strict src
 
   test:
     name: test (py${{ matrix.python-version }})
@@ -40,6 +40,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Install
-        run: uv pip install --system -e '.[dev]'
+        run: uv sync --extra dev
       - name: Pytest
-        run: pytest -q
+        run: uv run pytest -q
