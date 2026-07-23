@@ -128,6 +128,20 @@ class GitTreeFS:
         return proc.stdout
 
 
+def git_toplevel(path: str | Path) -> Path | None:
+    """Return the git repository root containing ``path``, or ``None``."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+    return Path(proc.stdout.strip())
+
+
 def rev_parse_verify(repo_root: str | Path, ref: str) -> str:
     """Resolve and validate a git ref, returning its full SHA.
 

@@ -6,7 +6,7 @@ import os
 from fnmatch import fnmatch
 from pathlib import Path
 
-from ..vfs import RealFS, VfsError
+from ..vfs import VFS, GitTreeFS, RealFS, VfsError, git_toplevel, rev_parse_verify
 from .discover import discover, discover_named
 from .model import DiscoveredPackage, Resolution
 
@@ -49,6 +49,55 @@ def resolve_target(target: str | None, cwd: str | Path | None = None) -> Resolut
         f"cannot resolve target {target!r}: not a directory and not found on "
         f"AMENT_PREFIX_PATH"
     )
+
+
+def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
+    """Resolve the ``--against`` baseline for a check.
+
+    Auto-detected in order: an ``.mcap`` bag, a ``roschema.lock`` file, a git
+    ref (validated against the repo containing ``target_dir``), then a directory
+    path. MCAP and lockfile baselines arrive in later phases.
+
+    Args:
+        against: The ``--against`` argument value.
+        target_dir: Directory of the interfaces being checked; used to find the
+            git repo and the sub-path to compare at the baseline ref.
+
+    Returns:
+        A :class:`Resolution` for the baseline interfaces.
+
+    Raises:
+        VfsError: If the baseline cannot be resolved.
+    """
+    target_dir = Path(target_dir)
+    if against.endswith(".mcap"):
+        raise VfsError("MCAP baselines are not supported yet (Phase 7)")
+    if against.endswith(".lock"):
+        raise VfsError("lockfile baselines are not supported yet (Phase 8)")
+
+    repo_root = git_toplevel(target_dir)
+    if repo_root is not None and _is_git_ref(repo_root, against):
+        rel = os.path.relpath(target_dir, repo_root)
+        git_vfs = GitTreeFS(repo_root, against)
+        packages = discover(git_vfs, "." if rel == "." else rel)
+        return Resolution(vfs=git_vfs, packages=packages, source=f"git:{against}")
+
+    path = Path(against)
+    if path.is_dir():
+        real_vfs: VFS = RealFS(path)
+        return Resolution(vfs=real_vfs, packages=discover(real_vfs, "."), source=f"path:{path}")
+
+    raise VfsError(
+        f"cannot resolve baseline {against!r}: not a git ref, directory, .mcap or .lock"
+    )
+
+
+def _is_git_ref(repo_root: Path, ref: str) -> bool:
+    try:
+        rev_parse_verify(repo_root, ref)
+    except VfsError:
+        return False
+    return True
 
 
 def _resolve_ament(name: str) -> Resolution | None:
