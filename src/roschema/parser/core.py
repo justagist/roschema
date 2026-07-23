@@ -158,13 +158,30 @@ def _parse_member(
             raw,
         )
     member_name = name_match.group(0)
-    after = rest[name_match.end() :].lstrip()
+    sep_idx = name_match.end()
+    if sep_idx < len(rest) and rest[sep_idx] not in " \t=":
+        raise ParseError(
+            "invalid character in member name",
+            source_file,
+            lineno,
+            indent + len(type_token) + 1 + sep_idx + 1,
+            raw,
+        )
+    after = rest[sep_idx:].lstrip()
 
     if after.startswith("="):
         value_raw = after[1:].strip()
         if value_raw == "":
             raise ParseError(
                 "constant is missing a value after '='", source_file, lineno, indent + 1, raw
+            )
+        if type_ref.array_kind is not ArrayKind.NONE:
+            raise ParseError(
+                "constants cannot be arrays", source_file, lineno, indent + 1, raw
+            )
+        if not type_ref.is_builtin:
+            raise ParseError(
+                "constant type must be a primitive type", source_file, lineno, indent + 1, raw
             )
         return Constant(
             name=member_name,

@@ -36,8 +36,8 @@ dev = [
 roschema = "roschema.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/roschema/roschema"
-Documentation = "https://github.com/roschema/roschema#readme"
+Homepage = "https://github.com/justagist/roschema"
+Documentation = "https://github.com/justagist/roschema#readme"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/roschema"]

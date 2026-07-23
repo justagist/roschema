@@ -191,3 +191,53 @@ def test_error_render_has_caret():
     rendered = e.value.render()
     assert "^" in rendered
     assert "T.msg:1:" in rendered
+
+
+@pytest.mark.parametrize("src", ["int32 a.b\n", "int32 a@!\n", "int32 a[3]\n"])
+def test_error_invalid_char_in_name_not_swallowed_as_default(src):
+    with pytest.raises(ParseError) as e:
+        _msg(src)
+    assert "member name" in e.value.message
+
+
+def test_valid_name_terminators_still_parse():
+    assert list(_msg("int32 X=5\n").constants())[0].value == 5
+    assert list(_msg("int32 X = 5\n").constants())[0].value == 5
+    assert _fields("int32 a\n")[0].name == "a"
+    assert _fields("int32 a 7\n")[0].default.value == 7
+
+
+def test_error_constant_array_rejected():
+    with pytest.raises(ParseError) as e:
+        _msg("int32[] X=[1, 2]\n")
+    assert "array" in e.value.message
+
+
+def test_error_constant_complex_type_rejected():
+    with pytest.raises(ParseError) as e:
+        _msg("Header FOO=x\n")
+    assert "primitive" in e.value.message
+
+
+def test_parse_file_derives_identity(tmp_path):
+    from roschema.parser import parse_file
+
+    pkg_dir = tmp_path / "my_pkg" / "msg"
+    pkg_dir.mkdir(parents=True)
+    f = pkg_dir / "Pose.msg"
+    f.write_text("float64 x\nfloat64 y\n")
+    iface = parse_file(f)
+    assert iface.package == "my_pkg"
+    assert iface.name == "Pose"
+    assert iface.kind == "msg"
+    assert iface.key == "my_pkg/msg/Pose"
+
+
+def test_parse_file_unsupported_extension(tmp_path):
+    from roschema.parser import parse_file
+
+    f = tmp_path / "x.txt"
+    f.write_text("int32 a\n")
+    with pytest.raises(ParseError) as e:
+        parse_file(f)
+    assert "extension" in e.value.message
