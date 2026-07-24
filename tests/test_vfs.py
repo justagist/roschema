@@ -17,6 +17,23 @@ def test_realfs_read_glob_exists(tmp_path):
     assert fs.read_text("pkg_a/msg/Foo.msg") == "int32 a\n"
 
 
+def test_realfs_read_missing_raises_vfserror(tmp_path):
+    with pytest.raises(VfsError):
+        RealFS(tmp_path).read_text("does_not_exist.msg")
+
+
+def test_loader_surfaces_vfserror_on_vanished_file(tmp_path):
+    from roschema.discovery import discover
+    from roschema.loader import load_interfaces
+
+    write_package(tmp_path, "pkg_a", msgs={"Foo": "int32 a\n"})
+    fs = RealFS(tmp_path)
+    packages = discover(fs, ".")
+    (tmp_path / "pkg_a" / "msg" / "Foo.msg").unlink()  # discovered, then gone
+    with pytest.raises(VfsError):
+        load_interfaces(fs, packages)
+
+
 def test_glob_to_regex():
     rx = _glob_to_regex("**/package.xml")
     assert rx.match("package.xml")

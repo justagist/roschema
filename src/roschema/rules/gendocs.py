@@ -6,6 +6,7 @@ the rule reference. A test asserts the committed file stays in sync.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from .breaking import ALL_BREAKING_RULES
@@ -69,8 +70,29 @@ def _render_lint(rule: LintRule) -> str:
     )
 
 
+_DOCS_PATH = Path("docs/rules.md")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI: no args writes the docs; ``--check`` verifies they are in sync."""
+    argv = sys.argv[1:] if argv is None else argv
+    rendered = render_docs()
+    if not argv:
+        _DOCS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _DOCS_PATH.write_text(rendered)
+        print(f"wrote {_DOCS_PATH}")
+        return 0
+    if argv == ["--check"]:
+        if _DOCS_PATH.is_file() and _DOCS_PATH.read_text() == rendered:
+            return 0
+        print(
+            "docs/rules.md is stale; regenerate with `python -m roschema.rules.gendocs`",
+            file=sys.stderr,
+        )
+        return 1
+    print("usage: python -m roschema.rules.gendocs [--check]", file=sys.stderr)
+    return 2
+
+
 if __name__ == "__main__":  # pragma: no cover
-    out = Path("docs/rules.md")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render_docs())
-    print(f"wrote {out}")
+    raise SystemExit(main())

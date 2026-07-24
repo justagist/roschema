@@ -17,7 +17,7 @@ from .rules import Finding
 if sys.version_info >= (3, 11):
     import tomllib
 else:  # pragma: no cover - exercised only on py3.10
-    import tomli as tomllib  # type: ignore[import-not-found]
+    import tomli as tomllib
 
 # Cumulative level bundles: selecting a level reports it and everything more
 # wire-significant than it.

@@ -44,7 +44,10 @@ class RealFS:
         self.root = Path(root)
 
     def read_text(self, path: str) -> str:
-        return (self.root / path).read_text()
+        try:
+            return (self.root / path).read_text()
+        except OSError as exc:
+            raise VfsError(f"cannot read {path}: {exc}") from exc
 
     def glob(self, pattern: str) -> list[str]:
         return sorted(p.relative_to(self.root).as_posix() for p in self.root.glob(pattern))

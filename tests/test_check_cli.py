@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+
 from typer.testing import CliRunner
 
 from _helpers import git_commit_all, make_git_repo, write_package
@@ -74,9 +77,106 @@ def test_check_unknown_format_exits_2(tmp_path):
     assert result.exit_code == 2
 
 
-def test_check_mcap_baseline_not_supported(tmp_path):
+def test_github_annotation_paths_are_repo_relative(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "pkg", msgs={"A": "float32 x\n"})  # package at src/pkg
+    git_commit_all(repo, "v1")
+    (repo / "src" / "pkg" / "msg" / "A.msg").write_text("float64 x\n")
+
+    # target is the subdirectory: the annotation path must be repo-root-relative
+    result = runner.invoke(
+        app, ["check", str(repo / "src" / "pkg"), "--against", "HEAD", "--format", "github"]
+    )
+    assert result.exit_code == 1
+    assert "file=src/pkg/msg/A.msg" in result.stdout
+
+
+def test_github_no_prefix_at_repo_root(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "pkg", msgs={"A": "float32 x\n"})
+    git_commit_all(repo, "v1")
+    (repo / "src" / "pkg" / "msg" / "A.msg").write_text("float64 x\n")
+
+    result = runner.invoke(
+        app, ["check", str(repo), "--against", "HEAD", "--format", "github"]
+    )
+    assert result.exit_code == 1
+    assert "file=src/pkg/msg/A.msg" in result.stdout  # VFS-relative already full
+
+
+def test_json_paths_stay_vfs_relative(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "pkg", msgs={"A": "float32 x\n"})
+    git_commit_all(repo, "v1")
+    (repo / "src" / "pkg" / "msg" / "A.msg").write_text("float64 x\n")
+
+    result = runner.invoke(
+        app, ["check", str(repo / "src" / "pkg"), "--against", "HEAD", "--format", "json"]
+    )
+    data = json.loads(result.stdout)
+    assert data["findings"][0]["new"]["file"] == "msg/A.msg"  # unchanged by prefixing
+
+
+def test_check_glob_target_two_depths(tmp_path, monkeypatch):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "a", msgs={"A": "float32 x\n"})
+    write_package(repo / "src" / "nested", "b", msgs={"B": "float32 y\n"})
+    git_commit_all(repo, "v1")
+    (repo / "src" / "a" / "msg" / "A.msg").write_text("float64 x\n")
+    (repo / "src" / "nested" / "b" / "msg" / "B.msg").write_text("float64 y\n")
+    git_commit_all(repo, "v2")
+    monkeypatch.chdir(repo)
+
+    result = runner.invoke(app, ["check", "src/**", "--against", "HEAD~1"])
+    assert result.exit_code == 1
+    assert "a/msg/A.x" in result.stdout
+    assert "b/msg/B.y" in result.stdout  # matched at a deeper level
+
+
+def test_check_glob_scopes_out_unmatched_packages(tmp_path, monkeypatch):
+    write_package(tmp_path / "new" / "src", "a", msgs={"A": "float64 x\n"})  # changed
+    write_package(tmp_path / "old", "a", msgs={"A": "float32 x\n"})
+    write_package(tmp_path / "old", "b", msgs={"B": "int32 y\n"})  # only in baseline
+    monkeypatch.chdir(tmp_path / "new")
+
+    result = runner.invoke(
+        app, ["check", "src/*", "--against", str(tmp_path / "old"), "--format", "json"]
+    )
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    packages = {f["package"] for f in data["findings"]}
+    assert packages == {"a"}  # b is out of the glob scope, not reported as removed
+
+
+def test_baseline_git_ref_shadows_dir_with_note(tmp_path, monkeypatch):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "pkgs", "m", msgs={"P": "float32 x\n"})
+    git_commit_all(repo, "c1")
+    subprocess.run(["git", "-C", str(repo), "branch", "snap"], check=True)
+    (repo / "pkgs" / "m" / "msg" / "P.msg").write_text("float64 x\n")
+    (repo / "snap").mkdir()  # a directory colliding with the ref name
+    monkeypatch.chdir(repo)
+
+    result = runner.invoke(app, ["check", "pkgs/m", "--against", "snap"])
+    assert result.exit_code == 1
+    assert "RS003" in result.output  # the git ref won (baseline order)
+    assert "note:" in result.output  # shadow diagnostic printed
+
+
+def test_baseline_dotslash_uses_directory(tmp_path, monkeypatch):
+    new = tmp_path / "new"
+    write_package(new, "m", msgs={"P": "float64 x\n"})
+    base = tmp_path / "base"
+    write_package(base, "m", msgs={"P": "float32 x\n"})
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["check", str(new), "--against", "./base"])
+    assert result.exit_code == 1
+    assert "RS003" in result.stdout
+
+
+def test_check_missing_mcap_baseline_errors(tmp_path):
     write_package(tmp_path / "new", "my_msgs", msgs={"Pose": "float32 t\n"})
     result = runner.invoke(
         app, ["check", str(tmp_path / "new"), "--against", "baseline.mcap"]
     )
-    assert result.exit_code == 2
+    assert result.exit_code == 2  # file does not exist

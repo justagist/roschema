@@ -36,6 +36,9 @@ def resolve_target(target: str | None, cwd: str | Path | None = None) -> Resolut
         vfs = RealFS(base)
         return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"workspace:{base}")
 
+    if not os.path.isabs(target) and any(ch in target for ch in "*?["):
+        return _resolve_glob(base, target)
+
     path = (base / target) if not os.path.isabs(target) else Path(target)
     if path.is_dir():
         vfs = RealFS(path)
@@ -48,6 +51,33 @@ def resolve_target(target: str | None, cwd: str | Path | None = None) -> Resolut
     raise VfsError(
         f"cannot resolve target {target!r}: not a directory and not found on "
         f"AMENT_PREFIX_PATH"
+    )
+
+
+def _resolve_glob(base: Path, pattern: str) -> Resolution:
+    """Expand a glob target (dirs) and union the packages discovered under each.
+
+    The VFS is rooted at ``base`` and package paths carry their sub-paths, so a
+    baseline still resolves each package at its own repo sub-path. The matched
+    package names become the resolution's ``scope`` so the baseline diff is
+    restricted to them.
+    """
+    vfs = RealFS(base)
+    seen: dict[str, DiscoveredPackage] = {}
+    for match in sorted(base.glob(pattern)):
+        if not match.is_dir():
+            continue
+        rel = match.relative_to(base).as_posix()
+        for pkg in discover(vfs, rel or "."):
+            seen[pkg.path] = pkg
+    if not seen:
+        raise VfsError(f"target glob {pattern!r} matched no interface packages")
+    packages = tuple(sorted(seen.values(), key=lambda p: p.name))
+    return Resolution(
+        vfs=vfs,
+        packages=packages,
+        source=f"glob:{pattern}",
+        scope=frozenset(p.name for p in packages),
     )
 
 
@@ -74,6 +104,15 @@ def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
         return resolve_bag(against)
     if against.endswith(".lock"):
         return resolve_lock(against)
+
+    # Explicit path forms bypass git detection entirely, so `./main` compares
+    # against a directory even when a git ref `main` also exists.
+    if against.startswith(("./", "../")) or os.path.isabs(against):
+        path = Path(against)
+        if path.is_dir():
+            vfs = RealFS(path)
+            return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"path:{path}")
+        raise VfsError(f"no such baseline directory: {against}")
 
     repo_root = git_toplevel(target_dir)
     if repo_root is not None and _is_git_ref(repo_root, against):

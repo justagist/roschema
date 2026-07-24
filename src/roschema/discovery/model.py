@@ -51,3 +51,5 @@ class Resolution:
     vfs: VFS
     packages: tuple[DiscoveredPackage, ...]
     source: str
+    scope: frozenset[str] | None = None
+    """When set (glob targets), restrict a baseline diff to these package names."""

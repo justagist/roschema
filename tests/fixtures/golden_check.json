@@ -78,6 +78,25 @@
       "suppressed": false
     },
     {
+      "rule": "RS007",
+      "severity": "error",
+      "level": "wire",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/BoundedNest",
+      "section": "message",
+      "target": "names",
+      "message": "bound tightened string<=5[<=10] -> string<=3[<=10]",
+      "old": {
+        "file": "demo_msgs/msg/BoundedNest.msg",
+        "line": 1
+      },
+      "new": {
+        "file": "demo_msgs/msg/BoundedNest.msg",
+        "line": 1
+      },
+      "suppressed": false
+    },
+    {
       "rule": "RS020",
       "severity": "error",
       "level": "source",
@@ -270,8 +289,8 @@
     }
   ],
   "summary": {
-    "total": 14,
-    "errors": 13,
+    "total": 15,
+    "errors": 14,
     "warnings": 1,
     "suppressed": 1,
     "advisories": {

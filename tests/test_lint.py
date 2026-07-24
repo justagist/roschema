@@ -90,3 +90,33 @@ def test_cli_lint_clean_exits_0(tmp_path):
     result = runner.invoke(app, ["lint", str(tmp_path)])
     assert result.exit_code == 0
     assert "no lint issues" in result.stdout
+
+
+def test_cli_lint_rules_enables_off_rule(tmp_path):
+    # RSL004 (missing doc) is off by default; --rules enables it
+    write_package(tmp_path, "p", msgs={"Good": "int32 good_field\n"})
+    default = runner.invoke(app, ["lint", str(tmp_path)])
+    assert default.exit_code == 0
+    enabled = runner.invoke(app, ["lint", str(tmp_path), "--rules", "RSL004=error"])
+    assert enabled.exit_code == 1
+    assert "RSL004" in enabled.stdout
+
+
+def test_cli_lint_rules_bare_means_warn(tmp_path):
+    write_package(tmp_path, "p", msgs={"Good": "int32 good_field\n"})
+    result = runner.invoke(app, ["lint", str(tmp_path), "--rules", "RSL004"])
+    assert result.exit_code == 0  # warn does not fail
+    assert "RSL004" in result.stdout
+
+
+def test_cli_lint_rules_off_beats_config(tmp_path):
+    (tmp_path / "roschema.toml").write_text('[lint.rules]\nRSL001 = "error"\n')
+    write_package(tmp_path, "p", msgs={"Bad": "int32 BadField  # doc\n"})
+    result = runner.invoke(app, ["lint", str(tmp_path), "--rules", "RSL001=off"])
+    assert result.exit_code == 0  # CLI override beats config
+
+
+def test_cli_lint_rules_rejects_bad_input(tmp_path):
+    write_package(tmp_path, "p", msgs={"Good": "int32 good_field  # doc\n"})
+    assert runner.invoke(app, ["lint", str(tmp_path), "--rules", "RSL999=warn"]).exit_code == 2
+    assert runner.invoke(app, ["lint", str(tmp_path), "--rules", "RSL001=loud"]).exit_code == 2

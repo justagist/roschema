@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -34,8 +36,8 @@ from .ir import InterfaceFile
 from .loader import load_interfaces
 from .parser import ParseError
 from .report import build_github, build_json, render_lint, render_text
-from .rules import Finding, evaluate, lint_interfaces
-from .vfs import RealFS, VfsError
+from .rules import Finding, all_lint_rules, evaluate, lint_interfaces
+from .vfs import RealFS, VfsError, git_toplevel
 
 app = typer.Typer(
     help="Breaking-change detection, linting and formatting for ROS 2 interfaces.",
@@ -93,14 +95,19 @@ def check(
         raise typer.Exit(code=2)
 
     try:
-        findings, new_source, old_source = _compute(
+        findings, new_source, old_source, prefix = _compute(
             target, lambda root: resolve_baseline(against, root), level, config_path, exclude, deep
         )
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    _emit(findings, fmt, new_source, old_source)
+    if old_source.startswith("git:") and Path(against).is_dir():
+        err_console.print(
+            f"[dim]note: {against!r} matched a git ref; "
+            f"use './{against}' to compare against the directory instead.[/dim]"
+        )
+    _emit(findings, fmt, new_source, old_source, prefix)
     _exit_for(findings, exit_zero)
 
 
@@ -183,7 +190,7 @@ def _compute(
     config_path: Path | None,
     exclude: list[str] | None,
     deep: bool = False,
-) -> tuple[list[Finding], str, str]:
+) -> tuple[list[Finding], str, str, str]:
     """Resolve both sides, diff and finalize; the shared check pipeline."""
     new_res = resolve_target(target)
     if not isinstance(new_res.vfs, RealFS):
@@ -193,11 +200,24 @@ def _compute(
     excludes = exclude or []
     new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, excludes))
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
+    if new_res.scope is not None:
+        # a glob target scopes both sides to the matched packages, so baseline-only
+        # packages outside the glob are not reported as removed
+        old_ifaces = {k: v for k, v in old_ifaces.items() if v.package in new_res.scope}
     raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
     if deep:
         raw = raw + transitive_findings(new_ifaces, raw)
     findings = finalize_findings(raw, config, level)
-    return findings, new_res.source, old_res.source
+    return findings, new_res.source, old_res.source, _display_prefix(new_res.vfs.root)
+
+
+def _display_prefix(target_dir: Path) -> str:
+    """Repo-root-relative prefix for a real-filesystem target, or ``""``."""
+    top = git_toplevel(target_dir)
+    if top is None:
+        return ""
+    rel = os.path.relpath(target_dir, top)
+    return "" if rel == "." else rel
 
 
 def _exit_for(findings: list[Finding], exit_zero: bool) -> None:
@@ -207,11 +227,17 @@ def _exit_for(findings: list[Finding], exit_zero: bool) -> None:
     raise typer.Exit(code=1 if has_error else 0)
 
 
-def _emit(findings: list[Finding], fmt: str, new_source: str, old_source: str) -> None:
+def _emit(
+    findings: list[Finding],
+    fmt: str,
+    new_source: str,
+    old_source: str,
+    display_prefix: str = "",
+) -> None:
     if fmt == "json":
         typer.echo(json.dumps(build_json(findings), indent=2))
     elif fmt == "github":
-        for line in build_github(findings):
+        for line in build_github(findings, display_prefix):
             typer.echo(line)
     else:
         render_text(findings, console, new_source, old_source)
@@ -229,6 +255,14 @@ def lint(
     config_path: Annotated[
         Path | None, typer.Option("--config", help="Explicit config file.")
     ] = None,
+    rules: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--rules",
+            help="Rule severity override(s), e.g. RSL004=warn or RSL001=off "
+            "(bare RSL### means =warn). Repeatable; beats config.",
+        ),
+    ] = None,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
@@ -243,10 +277,12 @@ def lint(
         raise typer.Exit(code=2)
 
     try:
+        overrides = _parse_rule_overrides(rules or [])
         res = resolve_target(target)
         if not isinstance(res.vfs, RealFS):
             raise VfsError("lint target must be a directory or workspace")
         config = load_config(res.vfs.root, res.packages, config_path)
+        config = replace(config, lint_rules={**config.lint_rules, **overrides})
         interfaces = load_interfaces(res.vfs, apply_exclude(res.packages, exclude or []))
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
@@ -256,7 +292,7 @@ def lint(
     if fmt == "json":
         typer.echo(json.dumps(build_json(findings), indent=2))
     elif fmt == "github":
-        for line in build_github(findings):
+        for line in build_github(findings, _display_prefix(res.vfs.root)):
             typer.echo(line)
     else:
         render_lint(findings, console, res.source)
@@ -265,6 +301,22 @@ def lint(
         raise typer.Exit(code=0)
     has_error = any(f.severity == "error" and not f.suppressed for f in findings)
     raise typer.Exit(code=1 if has_error else 0)
+
+
+def _parse_rule_overrides(items: list[str]) -> dict[str, str]:
+    """Parse ``--rules RSL004=warn`` items (bare ``RSL###`` means ``=warn``)."""
+    valid = {rule.id for rule in all_lint_rules()}
+    out: dict[str, str] = {}
+    for item in items:
+        rule_id, _, severity = item.partition("=")
+        rule_id = rule_id.strip()
+        severity = severity.strip() or "warn"
+        if rule_id not in valid:
+            raise ConfigError(f"--rules: unknown lint rule {rule_id!r}")
+        if severity not in ("off", "warn", "error"):
+            raise ConfigError(f"--rules: invalid severity {severity!r} for {rule_id}")
+        out[rule_id] = severity
+    return out
 
 
 @app.command()

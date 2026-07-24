@@ -9,6 +9,7 @@ from roschema.discovery import (
     apply_exclude,
     discover,
     discover_named,
+    resolve_baseline,
     resolve_target,
 )
 from roschema.vfs import GitTreeFS, RealFS, VfsError
@@ -91,3 +92,37 @@ def test_resolve_target_unresolvable(tmp_path, monkeypatch):
     monkeypatch.setenv("AMENT_PREFIX_PATH", "")
     with pytest.raises(VfsError):
         resolve_target("nonexistent_pkg", cwd=tmp_path)
+
+
+def test_resolve_target_glob(tmp_path):
+    write_package(tmp_path / "src", "a", msgs={"A": "int32 x\n"})
+    write_package(tmp_path / "src" / "nested", "b", msgs={"B": "int32 y\n"})
+    write_package(tmp_path, "c", msgs={"C": "int32 z\n"})  # outside src/
+    res = resolve_target("src/**", cwd=tmp_path)
+    assert res.source.startswith("glob:")
+    assert {p.name for p in res.packages} == {"a", "b"}  # c not matched
+    assert res.scope == frozenset({"a", "b"})
+
+
+def test_resolve_target_glob_empty_is_error(tmp_path):
+    with pytest.raises(VfsError):
+        resolve_target("nope/**", cwd=tmp_path)
+
+
+def test_resolve_baseline_absolute_path_bypasses_git(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")  # a git repo exists, so refs resolve
+    write_package(repo, "m", msgs={"P": "float32 x\n"})
+    git_commit_all(repo, "c1")
+    ext = tmp_path / "ext"
+    write_package(ext, "m", msgs={"P": "float32 x\n"})
+    # an absolute path is treated as a directory, never a git ref
+    res = resolve_baseline(str(ext), repo)
+    assert res.source.startswith("path:")
+
+
+def test_resolve_baseline_dotslash_missing_dir_errors(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo, "m", msgs={"P": "float32 x\n"})
+    git_commit_all(repo, "c1")
+    with pytest.raises(VfsError):
+        resolve_baseline("./nope", repo)  # explicit path form, does not fall back to git

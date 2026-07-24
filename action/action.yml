@@ -21,7 +21,10 @@ inputs:
     description: Resolve nested types and report transitive breakage (RS110).
     default: "false"
   exclude:
-    description: Whitespace-separated globs of packages/interfaces to skip.
+    description: >-
+      Whitespace-separated globs of packages/interfaces to skip. Split on
+      whitespace only; pathname expansion is disabled so patterns reach
+      roschema literally.
     default: ""
   version:
     description: roschema version/specifier for uvx (e.g. "roschema==0.1.0").
@@ -34,6 +37,7 @@ runs:
     - shell: bash
       run: |
         set -euo pipefail
+        set -f  # disable pathname expansion; exclude patterns must reach roschema literally
         args=(check "${{ inputs.target }}"
               --against "${{ inputs.against }}"
               --level "${{ inputs.level }}"

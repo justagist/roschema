@@ -23,13 +23,18 @@ See the full [rule reference](docs/rules.md) for every check (`RS***`) and lint
 
 ```
 roschema check [TARGET] --against REF [--level LEVEL] [--format text|json|github]
-               [--exit-zero] [--config PATH] [--exclude GLOB]
+               [--deep] [--exit-zero] [--config PATH] [--exclude GLOB]
 ```
 
+`TARGET` is a path, a package name, or a glob (`'src/**'`) that expands to every
+package underneath; omit it for the current workspace.
+
 `--against` accepts a git ref (validated with `git rev-parse`), a directory, an
-MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is auto-detected.
-Exit codes: `0` clean, `1` breaking changes found, `2` tool/usage error.
-`--exit-zero` forces `0`. Warnings alone do not fail (exit `0`).
+MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is auto-detected. A
+git ref is preferred when a directory of the same name also exists -- prefix the
+argument with `./` (e.g. `--against ./main`) to force the directory. Exit codes:
+`0` clean, `1` breaking changes found, `2` tool/usage error. `--exit-zero` forces
+`0`. Warnings alone do not fail (exit `0`).
 
 CDR is positional -- fields are serialised in declaration order with no field
 tags -- so adding, removing, reordering or retyping a field is wire-breaking
@@ -47,6 +52,11 @@ roschema check  [TARGET] --against roschema.lock
 plus a sha256, so a release tarball can carry its own baseline without git.
 `check --against roschema.lock` reads it back (sha256-verified) and compares.
 
+The lockfile records the roschema `tool_version` for provenance; upgrading
+roschema therefore changes that one line on the next `freeze` even when the
+interfaces are identical. It is not read during comparison -- `check` diffs only
+the interface text -- so the churn is cosmetic.
+
 ## Deep checking
 
 `check --deep` resolves nested complex types through the workspace and ament
@@ -58,7 +68,7 @@ even when its own definition is unchanged, with the causal chain shown. Without
 ## Linting and formatting
 
 ```
-roschema lint [TARGET] [--format text|json|github] [--exit-zero]
+roschema lint [TARGET] [--format text|json|github] [--rules RULE=SEV] [--exit-zero]
 roschema fmt  [TARGET] [--check]
 ```
 
@@ -66,7 +76,9 @@ roschema fmt  [TARGET] [--check]
 names snake_case (RSL001), constants UPPER_SNAKE (RSL002), interface names
 PascalCase (RSL003); it also flags deprecated `char`/scalar-`byte` (RSL005) and
 request/response field shadowing in services (RSL010). RSL004 (missing doc) and
-RSL006 (unbounded) are off by default; enable via `[lint.rules]`.
+RSL006 (unbounded) are off by default; enable via `[lint.rules]` or per run with
+`--rules` (e.g. `--rules RSL004=warn --rules RSL001=off`; a bare `--rules RSL004`
+means `=warn`). `--rules` is repeatable and beats config.
 
 `fmt` canonically formats interface files (single space between type and name,
 `=` without spaces for constants, one trailing newline) while preserving
