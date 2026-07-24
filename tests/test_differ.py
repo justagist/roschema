@@ -109,3 +109,28 @@ def test_section_carried_on_event():
 
 def test_no_events_for_identical():
     assert _events("int32 a  # doc\n", "int32 a  # different doc\n") == []
+
+
+def test_message_version_not_bumped_event():
+    events = _events(
+        "uint32 MESSAGE_VERSION=1\nint32 a\n",
+        "uint32 MESSAGE_VERSION=1\nint32 a\nint32 b\n",
+    )
+    assert ChangeType.MESSAGE_VERSION_NOT_BUMPED in _types(events)
+
+
+def test_message_version_bumped_no_event():
+    events = _events(
+        "uint32 MESSAGE_VERSION=1\nint32 a\n",
+        "uint32 MESSAGE_VERSION=2\nint32 a\nint32 b\n",
+    )
+    assert ChangeType.MESSAGE_VERSION_NOT_BUMPED not in _types(events)
+
+
+def test_message_version_no_event_without_structural_change():
+    # only a default change is not structural, so RS060's event must not fire
+    events = _events(
+        "uint32 MESSAGE_VERSION=1\nint32 a 1\n",
+        "uint32 MESSAGE_VERSION=1\nint32 a 2\n",
+    )
+    assert ChangeType.MESSAGE_VERSION_NOT_BUMPED not in _types(events)

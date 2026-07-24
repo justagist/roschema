@@ -33,6 +33,23 @@ class ChangeType(Enum):
     CONSTANT_REMOVED = "constant_removed"
     CONSTANT_VALUE_CHANGED = "constant_value_changed"
     CONSTANT_TYPE_CHANGED = "constant_type_changed"
+    MESSAGE_VERSION_NOT_BUMPED = "message_version_not_bumped"
+
+
+# Field-level changes that count as a structural change for the MESSAGE_VERSION
+# convention (RS060). Constant and default-only changes are not structural.
+_STRUCTURAL = frozenset(
+    {
+        ChangeType.FIELD_ADDED,
+        ChangeType.FIELD_REMOVED,
+        ChangeType.FIELD_RENAMED,
+        ChangeType.FIELD_TYPE_CHANGED,
+        ChangeType.FIELD_ARRAY_KIND_CHANGED,
+        ChangeType.FIELD_BOUND_TIGHTENED,
+        ChangeType.FIELD_BOUND_LOOSENED,
+        ChangeType.FIELD_REORDERED,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -82,9 +99,50 @@ def diff_interfaces(
 def _diff_interface(
     key: str, old: InterfaceFile, new: InterfaceFile, events: list[ChangeEvent]
 ) -> None:
+    local: list[ChangeEvent] = []
     for sec_old, sec_new in zip(old.sections, new.sections, strict=False):
-        _diff_fields(key, sec_old.kind, sec_old.members, sec_new.members, events)
-        _diff_constants(key, sec_old.kind, sec_old.members, sec_new.members, events)
+        _diff_fields(key, sec_old.kind, sec_old.members, sec_new.members, local)
+        _diff_constants(key, sec_old.kind, sec_old.members, sec_new.members, local)
+    _check_message_version(key, old, new, local)
+    events.extend(local)
+
+
+def _check_message_version(
+    key: str, old: InterfaceFile, new: InterfaceFile, local: list[ChangeEvent]
+) -> None:
+    """Emit RS060's event when structure changed without a MESSAGE_VERSION bump.
+
+    Only applies when the old interface defines a ``MESSAGE_VERSION`` constant
+    (PX4 convention). The value is bumped iff the new one is strictly greater.
+    """
+    old_const = _message_version(old)
+    if old_const is None:
+        return
+    if not any(e.type in _STRUCTURAL for e in local):
+        return
+    new_const = _message_version(new)
+    old_val = old_const.value
+    new_val = new_const.value if new_const is not None else None
+    if isinstance(old_val, int) and isinstance(new_val, int) and new_val > old_val:
+        return  # bumped
+    local.append(
+        ChangeEvent(
+            ChangeType.MESSAGE_VERSION_NOT_BUMPED,
+            key,
+            None,
+            "MESSAGE_VERSION",
+            old=old_const,
+            new=new_const,
+            detail={"old_version": old_val, "new_version": new_val},
+        )
+    )
+
+
+def _message_version(iface: InterfaceFile) -> Constant | None:
+    for const in iface.constants():
+        if const.name == "MESSAGE_VERSION":
+            return const
+    return None
 
 
 def _diff_fields(

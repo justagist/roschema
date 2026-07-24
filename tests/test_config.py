@@ -130,3 +130,20 @@ def test_finalize_allowlist_rule_scoped():
     )
     out = finalize_findings([_finding("RS001")], cfg, None)
     assert out[0].suppressed is False  # allow entry names a different rule
+
+
+def test_explicit_config_bypasses_level_preset():
+    behaviour = _finding("RS030", severity="warn", levels=("behavior",))
+    # default level is source: behaviour findings are filtered out
+    assert finalize_findings([behaviour], Config(), None) == []
+    # explicitly configuring the rule bypasses the level preset
+    cfg = Config(workspace=ScopeConfig(rules={"RS030": "warn"}))
+    assert len(finalize_findings([behaviour], cfg, None)) == 1
+
+
+def test_rs060_opt_in():
+    off = _finding("RS060", severity="off", levels=("behavior",))
+    assert finalize_findings([off], Config(), None) == []  # off by default
+    cfg = Config(workspace=ScopeConfig(rules={"RS060": "error"}))
+    out = finalize_findings([off], cfg, None)
+    assert len(out) == 1 and out[0].severity == "error"

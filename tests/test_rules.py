@@ -63,12 +63,6 @@ def test_rs040_interface_removed():
     assert f.rule == "RS040" and f.severity == "error"
 
 
-def test_constants_and_defaults_have_no_rule_yet():
-    # RS020-RS030 land in Phase 5; the differ emits events but nothing fires.
-    assert _findings("int32 X=1\n", "int32 X=2\n") == []
-    assert _findings("int32 a 1\n", "int32 a 2\n") == []
-
-
 def test_section_qualified_target_for_action():
     old = "int32 speed\n---\n---\n"
     new = "float32 speed\n---\n---\n"
@@ -80,3 +74,54 @@ def test_section_qualified_target_for_action():
 def test_interface_added_has_no_finding():
     o = parse_text("int32 a\n", "new", "p", "T", "msg")
     assert evaluate(diff_interfaces({}, {o.key: o})) == []
+
+
+def test_rs020_constant_removed():
+    assert _ids(_findings("int32 X=1\nint32 Y=2\n", "int32 X=1\n")) == ["RS020"]
+
+
+def test_rs021_constant_value_changed():
+    (f,) = _findings("int32 X=1\n", "int32 X=2\n")
+    assert f.rule == "RS021" and f.message == "constant value changed 1 -> 2"
+    assert f.severity == "error"
+
+
+def test_rs022_constant_type_changed():
+    (f,) = _findings("int32 X=1\n", "uint8 X=1\n")
+    assert f.rule == "RS022"
+
+
+def test_constant_added_has_no_finding():
+    assert _findings("int32 X=1\n", "int32 X=1\nint32 Y=2\n") == []
+
+
+def test_rs030_default_changed_is_behaviour_warn():
+    (f,) = _findings("int32 a 1\n", "int32 a 2\n")
+    assert f.rule == "RS030" and f.severity == "warn" and f.level == "behavior"
+    assert f.message == "default changed 1 -> 2"
+
+
+def test_rs030_default_added_and_removed():
+    (added,) = _findings("int32 a\n", "int32 a 5\n")
+    assert added.message == "default added: 5"
+    (removed,) = _findings("int32 a 5\n", "int32 a\n")
+    assert removed.message.startswith("default removed")
+
+
+def test_rs060_fires_off_by_default_when_not_bumped():
+    old = "uint32 MESSAGE_VERSION=1\nint32 a\n"
+    new = "uint32 MESSAGE_VERSION=1\nint32 a\nint32 b\n"
+    findings = _findings(old, new)
+    rs060 = [f for f in findings if f.rule == "RS060"]
+    assert len(rs060) == 1
+    assert rs060[0].severity == "off"  # opt-in; enabled via config
+
+
+def test_rs060_not_fired_when_bumped():
+    old = "uint32 MESSAGE_VERSION=1\nint32 a\n"
+    new = "uint32 MESSAGE_VERSION=2\nint32 a\nint32 b\n"
+    assert "RS060" not in _ids(_findings(old, new))
+
+
+def test_rs060_needs_the_constant():
+    assert "RS060" not in _ids(_findings("int32 a\n", "int32 a\nint32 b\n"))

@@ -71,6 +71,13 @@ class Config:
             return self.workspace.rules[rule_id]
         return default
 
+    def is_explicitly_set(self, rule_id: str, package: str) -> bool:
+        """Whether a rule's severity was set in config (bypasses level presets)."""
+        pkg_cfg = self.packages.get(package)
+        if pkg_cfg is not None and rule_id in pkg_cfg.rules:
+            return True
+        return rule_id in self.workspace.rules
+
     def effective_level(self, package: str, cli_level: str | None) -> str:
         """Reporting level: CLI > package > workspace > default."""
         if cli_level:
@@ -112,9 +119,12 @@ def finalize_findings(
         if severity == "off":
             continue
         finding = replace(finding, severity=severity)
-        bundle = LEVEL_BUNDLES[config.effective_level(pkg, cli_level)]
-        if not (set(finding.levels) & bundle):
-            continue
+        # A rule whose severity is set explicitly in config bypasses the level
+        # preset (an opt-in rule like RS060 is reported once enabled).
+        if not config.is_explicitly_set(finding.rule, pkg):
+            bundle = LEVEL_BUNDLES[config.effective_level(pkg, cli_level)]
+            if not (set(finding.levels) & bundle):
+                continue
         if finding.rule in finding.inline_ignores or config.is_allowed(finding):
             finding = replace(finding, suppressed=True)
         out.append(finding)

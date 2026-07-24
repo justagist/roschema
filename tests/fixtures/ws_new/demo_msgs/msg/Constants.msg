@@ -1,0 +1,3 @@
+int32 MODE_IDLE=0
+int32 MODE_RUN=2
+uint32 SCALE=1

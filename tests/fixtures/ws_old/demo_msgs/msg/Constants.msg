@@ -1,0 +1,4 @@
+int32 MODE_IDLE=0
+int32 MODE_RUN=1
+int32 OLD_FLAG=5
+float32 SCALE=1.0

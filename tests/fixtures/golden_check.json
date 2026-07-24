@@ -78,6 +78,60 @@
       "suppressed": false
     },
     {
+      "rule": "RS020",
+      "severity": "error",
+      "level": "source",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/Constants",
+      "section": "message",
+      "target": "OLD_FLAG",
+      "message": "constant 'OLD_FLAG' removed",
+      "old": {
+        "file": "demo_msgs/msg/Constants.msg",
+        "line": 3
+      },
+      "new": null,
+      "suppressed": false
+    },
+    {
+      "rule": "RS021",
+      "severity": "error",
+      "level": "source",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/Constants",
+      "section": "message",
+      "target": "MODE_RUN",
+      "message": "constant value changed 1 -> 2",
+      "old": {
+        "file": "demo_msgs/msg/Constants.msg",
+        "line": 2
+      },
+      "new": {
+        "file": "demo_msgs/msg/Constants.msg",
+        "line": 2
+      },
+      "suppressed": false
+    },
+    {
+      "rule": "RS022",
+      "severity": "error",
+      "level": "source",
+      "package": "demo_msgs",
+      "interface": "demo_msgs/msg/Constants",
+      "section": "message",
+      "target": "SCALE",
+      "message": "constant type changed float32 -> uint32",
+      "old": {
+        "file": "demo_msgs/msg/Constants.msg",
+        "line": 4
+      },
+      "new": {
+        "file": "demo_msgs/msg/Constants.msg",
+        "line": 3
+      },
+      "suppressed": false
+    },
+    {
       "rule": "RS002",
       "severity": "error",
       "level": "wire",
@@ -216,8 +270,8 @@
     }
   ],
   "summary": {
-    "total": 11,
-    "errors": 10,
+    "total": 14,
+    "errors": 13,
     "warnings": 1,
     "suppressed": 1,
     "advisories": {
