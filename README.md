@@ -6,8 +6,18 @@ Catch breaking ROS 2 interface changes in the PR, not on the robot.
 definitions (`.msg`, `.srv`, `.action`) with zero ROS dependencies, so it runs
 in a bare CI container.
 
-> Work in progress. The full README (quickstart, compatibility-level table,
-> rule reference, CI snippet) lands with later phases.
+![demo](docs/demo.gif)
+<!-- TODO: replace with an animated capture of `roschema check` on a PR. -->
+
+## Quickstart
+
+```bash
+# in a pull request, compare the working tree against the base branch
+uvx roschema check --against origin/main
+```
+
+See the full [rule reference](docs/rules.md) for every check (`RS***`) and lint
+(`RSL***`) rule.
 
 ## Checking
 
@@ -16,9 +26,15 @@ roschema check [TARGET] --against REF [--level LEVEL] [--format text|json|github
                [--exit-zero] [--config PATH] [--exclude GLOB]
 ```
 
-`--against` accepts a git ref (validated with `git rev-parse`) or a directory.
+`--against` accepts a git ref (validated with `git rev-parse`), a directory, an
+MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is auto-detected.
 Exit codes: `0` clean, `1` breaking changes found, `2` tool/usage error.
 `--exit-zero` forces `0`. Warnings alone do not fail (exit `0`).
+
+CDR is positional -- fields are serialised in declaration order with no field
+tags -- so adding, removing, reordering or retyping a field is wire-breaking
+even when your code still compiles. That is why the taxonomy is structural, and
+why the default `source` level already reports wire-level changes.
 
 ## Freeze (non-git baselines)
 
@@ -149,3 +165,59 @@ Suppressed findings are counted, not failed.
 `old`/`new` are `null` when there is no corresponding side (e.g. a removed
 interface has no `new`). `--format github` emits `::error`/`::warning`
 workflow-command annotations instead.
+
+## GitHub Action
+
+A composite action wraps `uvx roschema check` and posts inline annotations on
+the PR diff:
+
+```yaml
+# .github/workflows/interfaces.yml
+on: pull_request
+jobs:
+  interfaces:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # needed for the git-ref baseline
+      - uses: justagist/roschema/action@v1
+        with:
+          against: origin/${{ github.base_ref }}
+          # level: source
+          # deep: "true"
+          # exclude: "vendor_msgs* legacy_msgs/msg/Old"
+```
+
+`against` takes the same values as the CLI (git ref, directory, `.mcap`,
+`roschema.lock`). A lockfile or directory baseline needs no `fetch-depth: 0`
+because it is a plain file in the checkout.
+
+## Rule reference
+
+Every rule, its levels, default severity and rationale is documented in
+[docs/rules.md](docs/rules.md), generated from the rule metadata with
+`python -m roschema.rules.gendocs`.
+
+## Non-goals
+
+roschema deliberately does **not**:
+
+- generate migration or translation rules;
+- parse ROS 1 `.msg` (md5 semantics differ);
+- parse hand-written `.idl` beyond the MCAP-embedded subset;
+- provide any registry or server component;
+- parse `CMakeLists.txt` for discovery (directory convention + ament index only).
+
+## Relationship to REP-2011 and type hashes
+
+These are complementary layers, not alternatives:
+
+- **roschema** prevents *accidental* breaks at PR time, before anything ships.
+- **RIHS type hashes** (REP-2011) detect a pub/sub *mismatch at runtime* -- after
+  the fact, on the robot.
+- **REP-2011 type-description distribution / translation** mitigates *intentional*
+  evolution by carrying enough information to translate between versions.
+
+roschema is the earliest gate: catch the break in review so the later layers
+never have to.

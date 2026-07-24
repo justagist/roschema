@@ -1,0 +1,47 @@
+name: roschema
+description: Catch breaking ROS 2 interface changes in the pull request.
+branding:
+  icon: git-pull-request
+  color: purple
+
+inputs:
+  target:
+    description: Path or package to check.
+    default: "."
+  against:
+    description: Baseline -- a git ref, directory, .mcap bag or roschema.lock.
+    default: origin/main
+  level:
+    description: Reporting level (wire, source, introspection, behavior).
+    default: source
+  format:
+    description: Output format (text, json, github).
+    default: github
+  deep:
+    description: Resolve nested types and report transitive breakage (RS110).
+    default: "false"
+  exclude:
+    description: Whitespace-separated globs of packages/interfaces to skip.
+    default: ""
+  version:
+    description: roschema version/specifier for uvx (e.g. "roschema==0.1.0").
+    default: roschema
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v5
+    - shell: bash
+      run: |
+        set -euo pipefail
+        args=(check "${{ inputs.target }}"
+              --against "${{ inputs.against }}"
+              --level "${{ inputs.level }}"
+              --format "${{ inputs.format }}")
+        if [ "${{ inputs.deep }}" = "true" ]; then
+          args+=(--deep)
+        fi
+        for glob in ${{ inputs.exclude }}; do
+          args+=(--exclude "$glob")
+        done
+        uvx --from "${{ inputs.version }}" roschema "${args[@]}"
