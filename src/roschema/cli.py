@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -20,10 +21,13 @@ from .differ import diff_interfaces
 from .discovery import (
     Resolution,
     apply_exclude,
+    resolve_ament,
+    resolve_bag,
     resolve_baseline,
     resolve_target,
 )
 from .formatter import format_text
+from .ir import InterfaceFile
 from .loader import load_interfaces
 from .parser import ParseError
 from .report import build_github, build_json, render_lint, render_text
@@ -82,22 +86,112 @@ def check(
         raise typer.Exit(code=2)
 
     try:
-        new_res = resolve_target(target)
-        if not isinstance(new_res.vfs, RealFS):
-            raise VfsError("check target must be a directory or workspace")
-        old_res = resolve_baseline(against, new_res.vfs.root)
-        config = load_config(new_res.vfs.root, new_res.packages, config_path)
-        new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, exclude or []))
-        old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, exclude or []))
+        findings, new_source, old_source = _compute(
+            target, lambda root: resolve_baseline(against, root), level, config_path, exclude
+        )
+    except (VfsError, ParseError, ConfigError) as exc:
+        err_console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    _emit(findings, fmt, new_source, old_source)
+    _exit_for(findings, exit_zero)
+
+
+@app.command(name="bag-check")
+def bag_check(
+    bag: Annotated[str, typer.Argument(help="Recorded MCAP bag to check against.")],
+    targets: Annotated[
+        list[str] | None,
+        typer.Argument(
+            help="Paths/package names to compare against; default is the current "
+            "environment (ament index)."
+        ),
+    ] = None,
+    fmt: Annotated[
+        str, typer.Option("--format", help="Output format: text, json or github.")
+    ] = "text",
+    exit_zero: Annotated[
+        bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
+    ] = False,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
+    ] = None,
+) -> None:
+    """Check a recorded MCAP bag against the current environment.
+
+    By default the bag's types are compared against the interfaces available in
+    the current ROS environment (the ament index). Supplying TARGETS (paths or
+    package names) overlays those definitions on top, so a package you are
+    actively editing can be checked from source instead of its installed copy.
+    """
+    if fmt not in ("text", "json", "github"):
+        err_console.print(f"[red]error:[/red] unknown format {fmt!r}")
+        raise typer.Exit(code=2)
+    if not bag.endswith(".mcap"):
+        err_console.print(f"[red]error:[/red] expected a .mcap bag, got {bag!r}")
+        raise typer.Exit(code=2)
+
+    excludes = exclude or []
+    try:
+        old_res = resolve_bag(bag)
+        old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
+        new_ifaces, new_source = _resolve_current(old_ifaces, targets or [], excludes)
+        config = load_config(Path.cwd(), (), None)
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
     findings = finalize_findings(
+        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, None
+    )
+    _emit(findings, fmt, new_source, old_res.source)
+    _exit_for(findings, exit_zero)
+
+
+def _resolve_current(
+    bag_ifaces: dict[str, InterfaceFile], targets: list[str], excludes: list[str]
+) -> tuple[dict[str, InterfaceFile], str]:
+    """Build the current-side interfaces for a bag check.
+
+    Starts from the ament index (for the packages the bag references), then
+    overlays any explicit targets so they take precedence.
+    """
+    current: dict[str, InterfaceFile] = {}
+    for package in sorted({key.split("/", 1)[0] for key in bag_ifaces}):
+        res = resolve_ament(package)
+        if res is not None:
+            current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
+    for target in targets:
+        res = resolve_target(target)
+        current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
+    source = "targets+environment" if targets else "environment (ament index)"
+    return current, source
+
+
+def _compute(
+    target: str | None,
+    resolve_old: Callable[[Path], Resolution],
+    level: str | None,
+    config_path: Path | None,
+    exclude: list[str] | None,
+) -> tuple[list[Finding], str, str]:
+    """Resolve both sides, diff and finalize; the shared check pipeline."""
+    new_res = resolve_target(target)
+    if not isinstance(new_res.vfs, RealFS):
+        raise VfsError("target must be a directory or workspace")
+    old_res = resolve_old(new_res.vfs.root)
+    config = load_config(new_res.vfs.root, new_res.packages, config_path)
+    excludes = exclude or []
+    new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, excludes))
+    old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
+    findings = finalize_findings(
         evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level
     )
-    _emit(findings, fmt, new_res.source, old_res.source)
+    return findings, new_res.source, old_res.source
 
+
+def _exit_for(findings: list[Finding], exit_zero: bool) -> None:
     if exit_zero:
         raise typer.Exit(code=0)
     has_error = any(f.severity == "error" and not f.suppressed for f in findings)

@@ -39,6 +39,28 @@ comments, blank lines and section separators. It is idempotent and never
 changes what `check` reports; `--check` exits `1` if any file would change.
 Inline `# roschema: ignore=` suppressions survive formatting.
 
+## Checking against a recorded bag
+
+```
+pip install 'roschema[bag]'
+roschema bag-check recording.mcap [TARGETS...] [--format ...]
+```
+
+`bag-check` reads the interface definitions embedded in an MCAP bag and checks
+whether they are still compatible with your **current environment** - the bag is
+the baseline, so it flags changes that would stop current code from reading the
+recorded data. By default the bag's types are resolved from the ament index
+(`AMENT_PREFIX_PATH`), i.e. the packages installed in the sourced environment,
+so system packages like `sensor_msgs` are compared against their installed
+definitions rather than reported as missing.
+
+Optional `TARGETS` (paths or package names) are overlaid on top of the
+environment, so a package you are editing can be checked from source instead of
+its installed copy. A bag type found in neither the environment nor any target
+is reported as removed (RS040). `ros2msg` schemas (including concatenated
+dependent definitions) are fully supported; `ros2idl` is a best-effort
+conversion of the msg-equivalent subset.
+
 ## Compatibility levels
 
 `--level` selects a cumulative bundle of what is reported; the default is

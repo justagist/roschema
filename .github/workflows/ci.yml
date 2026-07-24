@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - name: Install
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra bag
       - name: Ruff
         run: uv run ruff check .
       - name: Mypy
@@ -40,6 +40,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Install
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra bag
       - name: Pytest
         run: uv run pytest -q

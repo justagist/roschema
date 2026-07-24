@@ -41,7 +41,7 @@ def resolve_target(target: str | None, cwd: str | Path | None = None) -> Resolut
         vfs = RealFS(path)
         return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"path:{path}")
 
-    ament = _resolve_ament(target)
+    ament = resolve_ament(target)
     if ament is not None:
         return ament
 
@@ -71,7 +71,7 @@ def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
     """
     target_dir = Path(target_dir)
     if against.endswith(".mcap"):
-        raise VfsError("MCAP baselines are not supported yet (Phase 7)")
+        return resolve_bag(against)
     if against.endswith(".lock"):
         raise VfsError("lockfile baselines are not supported yet (Phase 8)")
 
@@ -92,6 +92,20 @@ def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
     )
 
 
+def resolve_bag(bag_path: str) -> Resolution:
+    """Resolve an MCAP bag's embedded interface definitions as a source.
+
+    Raises:
+        VfsError: If the bag cannot be read or lacks usable schemas.
+    """
+    from ..mcap_fs import McapTypeFS
+
+    if not Path(bag_path).is_file():
+        raise VfsError(f"no such MCAP file: {bag_path}")
+    vfs = McapTypeFS(bag_path)
+    return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"mcap:{bag_path}")
+
+
 def _is_git_ref(repo_root: Path, ref: str) -> bool:
     try:
         rev_parse_verify(repo_root, ref)
@@ -100,7 +114,8 @@ def _is_git_ref(repo_root: Path, ref: str) -> bool:
     return True
 
 
-def _resolve_ament(name: str) -> Resolution | None:
+def resolve_ament(name: str) -> Resolution | None:
+    """Resolve a package by name via the ament index, or ``None`` if not found."""
     for prefix in _ament_prefixes():
         share = Path(prefix) / "share" / name
         if not any((share / kind).is_dir() for kind in _KINDS):
