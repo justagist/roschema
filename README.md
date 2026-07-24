@@ -1,5 +1,12 @@
 # roschema
 
+[![CI](https://github.com/justagist/roschema/actions/workflows/ci.yml/badge.svg)](https://github.com/justagist/roschema/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/roschema.svg)](https://pypi.org/project/roschema/)
+[![Python versions](https://img.shields.io/pypi/pyversions/roschema.svg)](https://pypi.org/project/roschema/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://img.shields.io/badge/mypy-strict-blue.svg)](https://mypy-lang.org/)
+
 Catch breaking ROS 2 interface changes in the PR, not on the robot.
 
 `roschema` detects breaking changes, lints and formats ROS 2 interface

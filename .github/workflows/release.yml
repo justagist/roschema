@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: build & verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install
+        run: uv sync --extra dev --extra bag
+      - name: Test, lint, type-check
+        run: |
+          uv run pytest -q
+          uv run ruff check .
+          uv run mypy --strict src
+          uv run python -m roschema.rules.gendocs --check
+      - name: Tag matches package version
+        run: |
+          version=$(uv run python -c "import roschema; print(roschema.__version__)")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "tag $tag does not match roschema.__version__ $version" >&2
+            exit 1
+          fi
+      - name: Build sdist and wheel
+        run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # required for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
