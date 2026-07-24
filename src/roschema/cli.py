@@ -10,6 +10,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from . import __version__
 from .config import (
     LEVEL_BUNDLES,
     ConfigError,
@@ -17,6 +18,7 @@ from .config import (
     finalize_lint,
     load_config,
 )
+from .deep import transitive_findings
 from .differ import diff_interfaces
 from .discovery import (
     Resolution,
@@ -27,6 +29,7 @@ from .discovery import (
     resolve_target,
 )
 from .formatter import format_text
+from .freeze import build_lock
 from .ir import InterfaceFile
 from .loader import load_interfaces
 from .parser import ParseError
@@ -69,6 +72,10 @@ def check(
         Path | None,
         typer.Option("--config", help="Explicit config file (roschema.toml or pyproject.toml)."),
     ] = None,
+    deep: Annotated[
+        bool,
+        typer.Option("--deep", help="Resolve nested types and flag transitive breakage (RS110)."),
+    ] = False,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
@@ -87,7 +94,7 @@ def check(
 
     try:
         findings, new_source, old_source = _compute(
-            target, lambda root: resolve_baseline(against, root), level, config_path, exclude
+            target, lambda root: resolve_baseline(against, root), level, config_path, exclude, deep
         )
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
@@ -175,6 +182,7 @@ def _compute(
     level: str | None,
     config_path: Path | None,
     exclude: list[str] | None,
+    deep: bool = False,
 ) -> tuple[list[Finding], str, str]:
     """Resolve both sides, diff and finalize; the shared check pipeline."""
     new_res = resolve_target(target)
@@ -185,9 +193,10 @@ def _compute(
     excludes = exclude or []
     new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, excludes))
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
-    findings = finalize_findings(
-        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level
-    )
+    raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
+    if deep:
+        raw = raw + transitive_findings(new_ifaces, raw)
+    findings = finalize_findings(raw, config, level)
     return findings, new_res.source, old_res.source
 
 
@@ -302,6 +311,32 @@ def fmt(
         raise typer.Exit(code=0)
     console.print(f"{len(changed)} file(s) reformatted")
     raise typer.Exit(code=0)
+
+
+@app.command()
+def freeze(
+    target: Annotated[
+        str | None,
+        typer.Argument(help="Path, package name, or omit for the current workspace."),
+    ] = None,
+    output: Annotated[
+        Path, typer.Option("-o", "--output", help="Lockfile path to write.")
+    ] = Path("roschema.lock"),
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
+    ] = None,
+) -> None:
+    """Write a roschema.lock baseline (canonical text + sha256 per interface)."""
+    try:
+        res = resolve_target(target)
+        interfaces = load_interfaces(res.vfs, apply_exclude(res.packages, exclude or []))
+    except (VfsError, ParseError) as exc:
+        err_console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    output.write_text(build_lock(interfaces, __version__))
+    console.print(f"wrote {len(interfaces)} interface(s) to {output}")
 
 
 @app.command()

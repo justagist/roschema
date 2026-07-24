@@ -19,29 +19,18 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .vfs import VfsError, _glob_to_regex
+from .vfs import MappingVFS, VfsError
 
 _SEPARATOR = re.compile(r"^={3,}$")
 _MSG_HEADER = re.compile(r"^MSG:\s*(\S+)")
 _PACKAGE_XML = '<?xml version="1.0"?>\n<package format="3"><name>{name}</name></package>\n'
 
 
-class McapTypeFS:
+class McapTypeFS(MappingVFS):
     """Read-only VFS over the interface definitions embedded in an MCAP file."""
 
     def __init__(self, bag_path: str) -> None:
-        self._files = _build_tree(_read_schemas(bag_path))
-
-    def read_text(self, path: str) -> str:
-        return self._files[path]
-
-    def glob(self, pattern: str) -> list[str]:
-        rx = _glob_to_regex(pattern)
-        return sorted(p for p in self._files if rx.match(p))
-
-    def exists(self, path: str) -> bool:
-        path = path.rstrip("/")
-        return path in self._files or any(f.startswith(path + "/") for f in self._files)
+        super().__init__(_build_tree(_read_schemas(bag_path)))
 
 
 def _read_schemas(bag_path: str) -> dict[str, tuple[str, str]]:

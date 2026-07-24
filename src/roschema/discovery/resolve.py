@@ -73,7 +73,7 @@ def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
     if against.endswith(".mcap"):
         return resolve_bag(against)
     if against.endswith(".lock"):
-        raise VfsError("lockfile baselines are not supported yet (Phase 8)")
+        return resolve_lock(against)
 
     repo_root = git_toplevel(target_dir)
     if repo_root is not None and _is_git_ref(repo_root, against):
@@ -104,6 +104,20 @@ def resolve_bag(bag_path: str) -> Resolution:
         raise VfsError(f"no such MCAP file: {bag_path}")
     vfs = McapTypeFS(bag_path)
     return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"mcap:{bag_path}")
+
+
+def resolve_lock(lock_path: str) -> Resolution:
+    """Resolve a ``roschema.lock`` file's interfaces as a source.
+
+    Raises:
+        VfsError: If the lockfile is missing or fails verification.
+    """
+    from ..freeze import LockFS
+
+    if not Path(lock_path).is_file():
+        raise VfsError(f"no such lockfile: {lock_path}")
+    vfs = LockFS(lock_path)
+    return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"lock:{lock_path}")
 
 
 def _is_git_ref(repo_root: Path, ref: str) -> bool:

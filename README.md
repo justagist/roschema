@@ -20,6 +20,25 @@ roschema check [TARGET] --against REF [--level LEVEL] [--format text|json|github
 Exit codes: `0` clean, `1` breaking changes found, `2` tool/usage error.
 `--exit-zero` forces `0`. Warnings alone do not fail (exit `0`).
 
+## Freeze (non-git baselines)
+
+```
+roschema freeze [TARGET] -o roschema.lock
+roschema check  [TARGET] --against roschema.lock
+```
+
+`freeze` writes a lockfile holding each interface's canonical (post-`fmt`) text
+plus a sha256, so a release tarball can carry its own baseline without git.
+`check --against roschema.lock` reads it back (sha256-verified) and compares.
+
+## Deep checking
+
+`check --deep` resolves nested complex types through the workspace and ament
+index and reports transitive breakage (`RS110`): an interface that embeds -
+directly or through nested types - another whose wire layout changed is flagged
+even when its own definition is unchanged, with the causal chain shown. Without
+`--deep`, nested types are compared by name only.
+
 ## Linting and formatting
 
 ```

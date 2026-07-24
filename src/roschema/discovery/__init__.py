@@ -9,6 +9,7 @@ from .resolve import (
     resolve_ament,
     resolve_bag,
     resolve_baseline,
+    resolve_lock,
     resolve_target,
 )
 
@@ -22,5 +23,6 @@ __all__ = [
     "resolve_ament",
     "resolve_bag",
     "resolve_baseline",
+    "resolve_lock",
     "resolve_target",
 ]

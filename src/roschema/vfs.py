@@ -53,6 +53,28 @@ class RealFS:
         return (self.root / path).exists()
 
 
+class MappingVFS:
+    """A VFS backed by an in-memory ``{path: text}`` mapping.
+
+    Shared by the MCAP and lockfile backends, which each build a virtual tree of
+    interface files and synthetic ``package.xml`` entries.
+    """
+
+    def __init__(self, files: dict[str, str]) -> None:
+        self._files = files
+
+    def read_text(self, path: str) -> str:
+        return self._files[path]
+
+    def glob(self, pattern: str) -> list[str]:
+        rx = _glob_to_regex(pattern)
+        return sorted(p for p in self._files if rx.match(p))
+
+    def exists(self, path: str) -> bool:
+        path = path.rstrip("/")
+        return path in self._files or any(f.startswith(path + "/") for f in self._files)
+
+
 def _glob_to_regex(pattern: str) -> re.Pattern[str]:
     """Translate a glob pattern into a full-match regex.
 
