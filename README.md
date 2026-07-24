@@ -23,6 +23,37 @@ uvx roschema check --against origin/main
 See the full [rule reference](docs/rules.md) for every check (`RS***`) and lint
 (`RSL***`) rule.
 
+## Common usage
+
+```bash
+# breaking-change gate in a PR (compare against the base branch)
+roschema check --against origin/main
+
+# check before pushing, against the last commit
+roschema check --against HEAD
+
+# scope to one package, or a subtree with a glob (and exclude vendored packages)
+roschema check src/my_msgs --against origin/main
+roschema check 'src/**' --against origin/main --exclude 'vendor_*'
+
+# only fail on wire-level breaks (loosest gate)
+roschema check --against origin/main --level wire
+
+# machine-readable output for tooling
+roschema check --against origin/main --format json
+
+# style/naming check, and a formatting gate for CI
+roschema lint
+roschema fmt --check
+
+# pin a release baseline, then check against it later (no git needed)
+roschema freeze -o roschema.lock
+roschema check --against roschema.lock
+
+# is this recorded bag still compatible with the installed interfaces?
+roschema bag-check recording.mcap
+```
+
 ## Checking
 
 ```
