@@ -1,0 +1,92 @@
+"""Tests for lint rules (rosidl-aligned naming) and lint finalization."""
+
+from __future__ import annotations
+
+from typer.testing import CliRunner
+
+from _helpers import write_package
+from roschema.cli import app
+from roschema.config import Config, finalize_lint
+from roschema.parser import parse_text
+from roschema.rules import lint_interfaces
+
+runner = CliRunner()
+
+
+def _lint(text, kind="msg", name="T"):
+    iface = parse_text(text, f"p/{kind}/{name}.{kind}", "p", name, kind)
+    return lint_interfaces({iface.key: iface})
+
+
+def _ids(findings):
+    return sorted({f.rule for f in findings})
+
+
+def test_rsl001_field_snake_case():
+    assert "RSL001" in _ids(_lint("int32 BadField\n"))
+    assert "RSL001" in _ids(_lint("int32 trailing_\n"))
+    assert "RSL001" not in _ids(_lint("int32 good_field\n"))
+
+
+def test_rsl002_constant_upper_snake():
+    assert "RSL002" in _ids(_lint("int32 badName=1\n"))
+    assert "RSL002" not in _ids(_lint("int32 GOOD_NAME=1\n"))
+
+
+def test_rsl003_interface_pascal_case():
+    assert "RSL003" in _ids(_lint("int32 a\n", name="lower_name"))
+    assert "RSL003" not in _ids(_lint("int32 a\n", name="GoodName"))
+
+
+def test_rsl004_off_by_default():
+    raw = _lint("int32 a\n")  # no trailing comment
+    assert "RSL004" in _ids(raw)
+    assert finalize_lint(raw, Config()) == []  # off -> dropped
+    enabled = finalize_lint(raw, Config(lint_rules={"RSL004": "warn"}))
+    assert "RSL004" in _ids(enabled)
+
+
+def test_rsl005_discouraged_types():
+    assert "RSL005" in _ids(_lint("char c\n"))
+    assert "RSL005" in _ids(_lint("byte b\n"))
+    assert "RSL005" not in _ids(_lint("byte[] data\n"))  # byte array is fine
+    assert "RSL005" not in _ids(_lint("uint8 x\n"))
+
+
+def test_rsl006_unbounded_off_by_default():
+    raw = _lint("string s  # doc\n")  # unbounded string
+    assert "RSL006" in _ids(raw)
+    assert finalize_lint(raw, Config()) == []
+    assert _ids(finalize_lint(raw, Config(lint_rules={"RSL006": "warn"}))) == ["RSL006"]
+    assert "RSL006" not in _ids(_lint("string<=8 s  # doc\n"))
+
+
+def test_rsl010_srv_request_response_shadow():
+    assert "RSL010" in _ids(_lint("int32 value\n---\nint32 value\n", kind="srv"))
+    assert "RSL010" not in _ids(_lint("int32 req\n---\nint32 resp\n", kind="srv"))
+
+
+def test_lint_inline_suppression():
+    raw = _lint("int32 BadField  # roschema: ignore=RSL001\n")
+    out = finalize_lint(raw, Config())
+    rsl001 = [f for f in out if f.rule == "RSL001"]
+    assert rsl001 and rsl001[0].suppressed is True
+
+
+def test_lint_severity_override_off():
+    raw = _lint("int32 BadField\n")
+    assert finalize_lint(raw, Config(lint_rules={"RSL001": "off"})) == []
+
+
+def test_cli_lint_reports_and_exits_1(tmp_path):
+    write_package(tmp_path, "p", msgs={"Bad": "int32 BadField  # doc\n"})
+    result = runner.invoke(app, ["lint", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "RSL001" in result.stdout
+
+
+def test_cli_lint_clean_exits_0(tmp_path):
+    write_package(tmp_path, "p", msgs={"Good": "int32 good_field  # doc\n"})
+    result = runner.invoke(app, ["lint", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "no lint issues" in result.stdout

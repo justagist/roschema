@@ -131,6 +131,24 @@ def finalize_findings(
     return out
 
 
+def finalize_lint(findings: list[Finding], config: Config) -> list[Finding]:
+    """Apply ``[lint.rules]`` severities and inline suppression to lint findings.
+
+    Lint has no baseline, so there is no level filter or allowlist; only severity
+    overrides (including ``off``) and inline ``# roschema: ignore=`` apply.
+    """
+    out: list[Finding] = []
+    for finding in findings:
+        severity = config.lint_rules.get(finding.rule, finding.severity)
+        if severity == "off":
+            continue
+        finding = replace(finding, severity=severity)
+        if finding.rule in finding.inline_ignores:
+            finding = replace(finding, suppressed=True)
+        out.append(finding)
+    return out
+
+
 def load_config(
     root: Path,
     packages: tuple[DiscoveredPackage, ...],

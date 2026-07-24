@@ -20,6 +20,25 @@ roschema check [TARGET] --against REF [--level LEVEL] [--format text|json|github
 Exit codes: `0` clean, `1` breaking changes found, `2` tool/usage error.
 `--exit-zero` forces `0`. Warnings alone do not fail (exit `0`).
 
+## Linting and formatting
+
+```
+roschema lint [TARGET] [--format text|json|github] [--exit-zero]
+roschema fmt  [TARGET] [--check]
+```
+
+`lint` checks a single tree (no baseline). Naming rules follow rosidl: field
+names snake_case (RSL001), constants UPPER_SNAKE (RSL002), interface names
+PascalCase (RSL003); it also flags deprecated `char`/scalar-`byte` (RSL005) and
+request/response field shadowing in services (RSL010). RSL004 (missing doc) and
+RSL006 (unbounded) are off by default; enable via `[lint.rules]`.
+
+`fmt` canonically formats interface files (single space between type and name,
+`=` without spaces for constants, one trailing newline) while preserving
+comments, blank lines and section separators. It is idempotent and never
+changes what `check` reports; `--check` exits `1` if any file would change.
+Inline `# roschema: ignore=` suppressions survive formatting.
+
 ## Compatibility levels
 
 `--level` selects a cumulative bundle of what is reported; the default is

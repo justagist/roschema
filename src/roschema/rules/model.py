@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 
 from ..differ import ChangeEvent, ChangeType
+from ..ir import InterfaceFile
+
+_IGNORE_RE = re.compile(r"roschema:\s*ignore\s*=\s*([\w,\s]+)")
+
+
+def parse_inline_ignores(comment: str | None) -> tuple[str, ...]:
+    """Parse ``# roschema: ignore=RS001,RSL002`` from a trailing comment."""
+    if not comment:
+        return ()
+    match = _IGNORE_RE.search(comment)
+    if not match:
+        return ()
+    return tuple(part.strip() for part in match.group(1).split(",") if part.strip())
 
 # Compatibility levels, ordered most- to least- wire-significant.
 LEVEL_ORDER = ("wire", "source", "introspection", "behavior")
@@ -105,3 +119,43 @@ class Finding:
         if self.target:
             parts.append(self.target)
         return ".".join(parts)
+
+
+@dataclass(frozen=True)
+class LintHit:
+    """A single lint violation located within one interface.
+
+    Args:
+        section: Section value the hit is in, or ``None`` for file-level.
+        target: Member name, or ``""`` for a file-level hit.
+        line: 1-based line of the offending member, if applicable.
+        message: Human-readable description.
+        comment: Trailing comment on the member line (for inline suppression).
+    """
+
+    section: str | None
+    target: str
+    line: int | None
+    message: str
+    comment: str | None = None
+
+
+@dataclass(frozen=True)
+class LintRule:
+    """A lint rule that inspects a single interface (no baseline).
+
+    Args:
+        id: Permanent identifier (``RSL###``).
+        title: Short human title.
+        description: What the rule detects.
+        rationale: Why it matters.
+        default_severity: Severity when not overridden by config.
+        check: Yields a :class:`LintHit` per violation in an interface.
+    """
+
+    id: str
+    title: str
+    description: str
+    rationale: str
+    default_severity: Severity
+    check: Callable[[InterfaceFile], list[LintHit]]

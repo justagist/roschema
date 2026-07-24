@@ -48,6 +48,32 @@ def render_text(
         )
 
 
+def render_lint(findings: list[Finding], console: Console, source: str) -> None:
+    """Render lint findings (no baseline, no semver advisory)."""
+    console.print(f"[bold]linting[/bold] {source}")
+    reported = [f for f in findings if not f.suppressed]
+    if not reported:
+        console.print("[green]no lint issues found[/green]")
+        _print_suppressed(console, findings)
+        return
+
+    by_package: dict[str, list[Finding]] = {}
+    for finding in reported:
+        by_package.setdefault(finding.package, []).append(finding)
+    for package in sorted(by_package):
+        console.print(f"\n[bold cyan]{package}[/bold cyan]")
+        for finding in by_package[package]:
+            _print_finding(console, finding)
+
+    errors = sum(1 for f in reported if f.severity == "error")
+    warnings = sum(1 for f in reported if f.severity == "warn")
+    console.print(
+        f"\n[bold]{len(reported)} issue(s):[/bold] "
+        f"[red]{errors} error(s)[/red], [yellow]{warnings} warning(s)[/yellow]"
+    )
+    _print_suppressed(console, findings)
+
+
 def _print_finding(console: Console, finding: Finding) -> None:
     style = _SEVERITY_STYLE.get(finding.severity, "white")
     label = LEVEL_LABEL.get(finding.level, finding.level)

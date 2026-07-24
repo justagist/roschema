@@ -2,18 +2,59 @@
 
 from __future__ import annotations
 
-import re
-
 from ..differ import ChangeEvent, ChangeType
+from ..ir import InterfaceFile
 from .breaking import ALL_BREAKING_RULES
-from .model import Finding, Rule
-
-_IGNORE_RE = re.compile(r"roschema:\s*ignore\s*=\s*([\w,\s]+)")
+from .lint import ALL_LINT_RULES
+from .model import Finding, LintRule, Rule, parse_inline_ignores
 
 
 def all_rules() -> tuple[Rule, ...]:
-    """Every rule roschema ships (currently the breaking-change set)."""
+    """Every breaking-change (check) rule roschema ships."""
     return ALL_BREAKING_RULES
+
+
+def all_lint_rules() -> tuple[LintRule, ...]:
+    """Every lint rule roschema ships."""
+    return ALL_LINT_RULES
+
+
+def lint_interfaces(
+    interfaces: dict[str, InterfaceFile], rules: tuple[LintRule, ...] | None = None
+) -> list[Finding]:
+    """Run lint rules over each interface, producing findings.
+
+    Args:
+        interfaces: Parsed interfaces keyed by ``package/kind/name``.
+        rules: Lint rules to apply; defaults to :func:`all_lint_rules`.
+
+    Returns:
+        Findings in ``(interface, rule)`` order.
+    """
+    active = rules if rules is not None else all_lint_rules()
+    findings: list[Finding] = []
+    for key in sorted(interfaces):
+        iface = interfaces[key]
+        for rule in active:
+            for hit in rule.check(iface):
+                findings.append(
+                    Finding(
+                        rule=rule.id,
+                        severity=rule.default_severity.value,
+                        level="lint",
+                        interface=key,
+                        section=hit.section,
+                        target=hit.target,
+                        message=hit.message,
+                        old_file=None,
+                        old_line=None,
+                        new_file=iface.source_file,
+                        new_line=hit.line,
+                        levels=("lint",),
+                        inline_ignores=parse_inline_ignores(hit.comment),
+                    )
+                )
+    return findings
 
 
 def evaluate(events: list[ChangeEvent], rules: tuple[Rule, ...] | None = None) -> list[Finding]:
@@ -53,15 +94,5 @@ def _build(rule: Rule, event: ChangeEvent) -> Finding:
         new_file=getattr(event.new, "source_file", None),
         new_line=getattr(event.new, "line", None),
         levels=rule.levels,
-        inline_ignores=_inline_ignores(getattr(event.new, "trailing_comment", None)),
+        inline_ignores=parse_inline_ignores(getattr(event.new, "trailing_comment", None)),
     )
-
-
-def _inline_ignores(comment: str | None) -> tuple[str, ...]:
-    """Parse ``# roschema: ignore=RS001,RS002`` from a trailing comment."""
-    if not comment:
-        return ()
-    match = _IGNORE_RE.search(comment)
-    if not match:
-        return ()
-    return tuple(part.strip() for part in match.group(1).split(",") if part.strip())

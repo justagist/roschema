@@ -9,7 +9,13 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from .config import LEVEL_BUNDLES, ConfigError, finalize_findings, load_config
+from .config import (
+    LEVEL_BUNDLES,
+    ConfigError,
+    finalize_findings,
+    finalize_lint,
+    load_config,
+)
 from .differ import diff_interfaces
 from .discovery import (
     Resolution,
@@ -17,10 +23,11 @@ from .discovery import (
     resolve_baseline,
     resolve_target,
 )
+from .formatter import format_text
 from .loader import load_interfaces
 from .parser import ParseError
-from .report import build_github, build_json, render_text
-from .rules import Finding, evaluate
+from .report import build_github, build_json, render_lint, render_text
+from .rules import Finding, evaluate, lint_interfaces
 from .vfs import RealFS, VfsError
 
 app = typer.Typer(
@@ -105,6 +112,102 @@ def _emit(findings: list[Finding], fmt: str, new_source: str, old_source: str) -
             typer.echo(line)
     else:
         render_text(findings, console, new_source, old_source)
+
+
+@app.command()
+def lint(
+    target: Annotated[
+        str | None,
+        typer.Argument(help="Path, package name, or omit for the current workspace."),
+    ] = None,
+    fmt: Annotated[
+        str, typer.Option("--format", help="Output format: text, json or github.")
+    ] = "text",
+    config_path: Annotated[
+        Path | None, typer.Option("--config", help="Explicit config file.")
+    ] = None,
+    exit_zero: Annotated[
+        bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
+    ] = False,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
+    ] = None,
+) -> None:
+    """Lint interface definitions in a single tree (no baseline)."""
+    if fmt not in ("text", "json", "github"):
+        err_console.print(f"[red]error:[/red] unknown format {fmt!r}")
+        raise typer.Exit(code=2)
+
+    try:
+        res = resolve_target(target)
+        if not isinstance(res.vfs, RealFS):
+            raise VfsError("lint target must be a directory or workspace")
+        config = load_config(res.vfs.root, res.packages, config_path)
+        interfaces = load_interfaces(res.vfs, apply_exclude(res.packages, exclude or []))
+    except (VfsError, ParseError, ConfigError) as exc:
+        err_console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    findings = finalize_lint(lint_interfaces(interfaces), config)
+    if fmt == "json":
+        typer.echo(json.dumps(build_json(findings), indent=2))
+    elif fmt == "github":
+        for line in build_github(findings):
+            typer.echo(line)
+    else:
+        render_lint(findings, console, res.source)
+
+    if exit_zero:
+        raise typer.Exit(code=0)
+    has_error = any(f.severity == "error" and not f.suppressed for f in findings)
+    raise typer.Exit(code=1 if has_error else 0)
+
+
+@app.command()
+def fmt(
+    target: Annotated[
+        str | None,
+        typer.Argument(help="Path, package name, or omit for the current workspace."),
+    ] = None,
+    check_only: Annotated[
+        bool, typer.Option("--check", help="Report files that need formatting; do not write.")
+    ] = False,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
+    ] = None,
+) -> None:
+    """Canonically format interface files (idempotent, comment-preserving)."""
+    try:
+        res = resolve_target(target)
+        if not isinstance(res.vfs, RealFS):
+            raise VfsError("fmt target must be a directory or workspace")
+        packages = apply_exclude(res.packages, exclude or [])
+        changed: list[str] = []
+        for pkg in packages:
+            for ref in pkg.interfaces:
+                original = res.vfs.read_text(ref.path)
+                formatted = format_text(original, ref.path)
+                if formatted != original:
+                    changed.append(ref.path)
+                    if not check_only:
+                        (res.vfs.root / ref.path).write_text(formatted)
+    except (VfsError, ParseError) as exc:
+        err_console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    verb = "would reformat" if check_only else "reformatted"
+    for path in changed:
+        console.print(f"{verb} {path}")
+    if check_only:
+        if changed:
+            console.print(f"[yellow]{len(changed)} file(s) need formatting[/yellow]")
+            raise typer.Exit(code=1)
+        console.print("[green]all files formatted[/green]")
+        raise typer.Exit(code=0)
+    console.print(f"{len(changed)} file(s) reformatted")
+    raise typer.Exit(code=0)
 
 
 @app.command()

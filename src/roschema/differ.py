@@ -197,7 +197,7 @@ def _diff_fields(
             events.append(
                 ChangeEvent(change, key, section, name, old=old_field, new=new_field)
             )
-        elif old_field.default != new_field.default:
+        elif _default_changed(old_field, new_field):
             events.append(
                 ChangeEvent(
                     ChangeType.FIELD_DEFAULT_CHANGED,
@@ -238,6 +238,19 @@ def _classify_type_change(old: Field, new: Field) -> ChangeType | None:
     if o.string_bound != n.string_bound:
         return _bound_direction(o.string_bound, n.string_bound)
     return None
+
+
+def _default_changed(old: Field, new: Field) -> bool:
+    """Whether a field's default was added, removed or changed in value.
+
+    Compares parsed values, not raw text, so reformatting a default (e.g.
+    ``[1,2]`` -> ``[1, 2]``) is never a finding.
+    """
+    if (old.default is None) != (new.default is None):
+        return True
+    if old.default is None or new.default is None:
+        return False
+    return old.default.value != new.default.value
 
 
 def _bound_direction(old_bound: int | None, new_bound: int | None) -> ChangeType:
