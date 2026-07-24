@@ -13,9 +13,6 @@ Catch breaking ROS 2 interface changes in the PR, not on the robot.
 definitions (`.msg`, `.srv`, `.action`) with zero ROS dependencies, so it runs
 in a bare CI container.
 
-![demo](docs/demo.gif)
-<!-- TODO: replace with an animated capture of `roschema check` on a PR. -->
-
 ## Quickstart
 
 ```bash

@@ -14,9 +14,13 @@ keywords = ["ros2", "ros", "interface", "msg", "srv", "action", "breaking-change
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
 ]
 dependencies = [
     "typer>=0.12",
@@ -39,6 +43,8 @@ roschema = "roschema.cli:app"
 [project.urls]
 Homepage = "https://github.com/justagist/roschema"
 Documentation = "https://github.com/justagist/roschema#readme"
+Repository = "https://github.com/justagist/roschema"
+Issues = "https://github.com/justagist/roschema/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/roschema"]
