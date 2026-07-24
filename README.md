@@ -13,6 +13,24 @@ Catch breaking ROS 2 interface changes in the PR, not on the robot.
 definitions (`.msg`, `.srv`, `.action`) with zero ROS dependencies, so it runs
 in a bare CI container.
 
+## Installation
+
+Requires Python 3.10+ and no ROS installation.
+
+```bash
+pip install roschema              # or: uv tool install roschema
+pip install 'roschema[bag]'       # optional: MCAP bag support (for bag-check)
+```
+
+Or run it without installing anything using `uvx`:
+
+```bash
+uvx roschema check --against origin/main
+```
+
+Using roschema as a [GitHub Action](#github-action) needs **no installation or
+setup** - the action provisions it on the runner for you.
+
 ## Quickstart
 
 ```bash
