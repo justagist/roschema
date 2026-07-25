@@ -13,9 +13,27 @@ Catch breaking ROS 2 interface changes in the PR, not on the robot.
 definitions (`.msg`, `.srv`, `.action`) with zero ROS dependencies, so it runs
 in a bare CI container.
 
+![roschema flagging a breaking interface change](https://raw.githubusercontent.com/justagist/_assets/main/roschema/roschema_demo.png)
+
+## Quickstart
+
+Test it without installing (expects `uvx` is present):
+
+```bash
+# in a pull request, compare the working tree against the base branch
+uvx roschema check --against origin/main
+```
+
+See the full [rule reference](docs/rules.md) for every check (`RS***`) and lint
+(`RSL***`) rule.
+
+Prefer a runnable example? The [roschema-demo](https://github.com/justagist/roschema-demo)
+repo has a `robot_msgs` package with a passing and a failing branch to compare,
+plus a ready-to-copy GitHub Action workflow.
+
 ## Installation
 
-Requires Python 3.10+ and no ROS installation.
+Requires Python 3.10+ (ROS installation **not** necessary).
 
 ```bash
 pip install roschema              # or: uv tool install roschema
@@ -30,16 +48,6 @@ uvx roschema check --against origin/main
 
 Using roschema as a [GitHub Action](#github-action) needs **no installation or
 setup** - the action provisions it on the runner for you.
-
-## Quickstart
-
-```bash
-# in a pull request, compare the working tree against the base branch
-uvx roschema check --against origin/main
-```
-
-See the full [rule reference](docs/rules.md) for every check (`RS***`) and lint
-(`RSL***`) rule.
 
 ## Common usage
 
