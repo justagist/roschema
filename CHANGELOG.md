@@ -3,6 +3,27 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-07-25
+
+Packaging and documentation release; no behavioural changes to the CLI.
+
+### Added
+
+- `py.typed` marker (PEP 561) so downstream type-checkers use roschema's types.
+- `Typing :: Typed` and Python 3.10-3.13 classifiers; `Repository` and `Issues`
+  project URLs.
+- README: installation section, common-usage recipes, a demo screenshot, and a
+  link to the [roschema-demo](https://github.com/justagist/roschema-demo) repo.
+
+### Changed
+
+- Dropped the redundant Apache license classifier in favour of the SPDX
+  `license` expression.
+
+### Fixed
+
+- Removed a broken demo image reference from the README.
+
 ## [0.1.0] - 2026-07-24
 
 First release.
