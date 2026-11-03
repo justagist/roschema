@@ -83,3 +83,82 @@ def test_unused_suppressions_follow_configured_severity(tmp_path):
     off = _check(tmp_path / "o", "int32 a\n", "int32 a\n", '[check.rules]\nRS200 = "off"\n' + stale)
     assert off.exit_code == 0
     assert "RS200" not in off.stdout
+
+
+def _rs200(result):
+    doc = json.loads(result.stdout)
+    return [
+        (f["interface"], f["target"], f["message"]) for f in doc["findings"] if f["rule"] == "RS200"
+    ]
+
+
+def test_package_entries_only_count_their_own_findings(tmp_path):
+    write_package(tmp_path / "old", "p", msgs={"S": "int32 a\n"})
+    write_package(tmp_path / "new", "p", msgs={"S": "int32 a\n"})
+    write_package(tmp_path / "old", "q", msgs={"Q": "int32 q\nint32 r\n"})
+    write_package(tmp_path / "new", "q", msgs={"Q": "int32 r\n"})
+    (tmp_path / "new" / "p" / "roschema.toml").write_text(
+        '[check.allow]\n"q/msg/Q.q" = { reason = "only q\'s configuration can allow this" }\n'
+    )
+    result = runner.invoke(
+        app,
+        ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old"), "--format", "json"],
+    )
+    assert _rs200(result) == [
+        ("p/msg/Q", "q", "allowlist entry 'q/msg/Q.q' in p's configuration matches no finding")
+    ]
+    assert result.exit_code == 1  # q's RS001 is not suppressed
+
+
+def test_unused_package_entry_follows_the_package_severity(tmp_path):
+    write_package(tmp_path / "old", "p", msgs={"S": "int32 a\n"})
+    write_package(tmp_path / "new", "p", msgs={"S": "int32 a\n"})
+    (tmp_path / "new" / "p" / "roschema.toml").write_text(
+        '[check.rules]\nRS200 = "off"\n[check.allow]\n"*/msg/S.zz" = { reason = "stale" }\n'
+    )
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            str(tmp_path / "new"),
+            "--against",
+            str(tmp_path / "old"),
+            "--warnings-as-errors",
+        ],
+    )
+    assert result.exit_code == 0, result.stdout
+
+
+def test_entries_for_interfaces_excluded_by_path_are_out_of_scope(tmp_path):
+    for side in ("old", "new"):
+        write_package(tmp_path / side, "p", msgs={"S": "int32 a\n", "T": "int32 t\n"})
+    (tmp_path / "new" / "roschema.toml").write_text(
+        '[check.allow]\n"p/msg/S.a" = { reason = "S is excluded" }\n'
+        '"p/msg/T.t" = { reason = "stale" }\n'
+    )
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            str(tmp_path / "new"),
+            "--against",
+            str(tmp_path / "old"),
+            "--format",
+            "json",
+            "--exclude",
+            "*/S.msg",
+        ],
+    )
+    assert _rs200(result) == [("p/msg/T", "t", "allowlist entry matches no finding")]
+
+
+def test_used_ignore_on_message_version_is_not_reported(tmp_path):
+    result = _check(
+        tmp_path,
+        "int32 MESSAGE_VERSION=1\nint32 a\n",
+        "int32 MESSAGE_VERSION=1  # roschema: ignore=RS060\nint64 a  # roschema: ignore=RS003\n",
+        "",
+        "--format",
+        "json",
+    )
+    assert _rs200(result) == []

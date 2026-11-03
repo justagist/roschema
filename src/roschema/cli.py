@@ -410,8 +410,9 @@ def _compute(
         ]
         raw += transitive
         findings += finalize_findings(transitive, config, level, dropped=dropped)
-    packages = {key.split("/", 1)[0] for key in (*old_ifaces, *new_ifaces)}
-    unused = unused_suppressions(raw, config, new_ifaces, packages, excludes)
+    checked = {*old_ifaces, *new_ifaces}
+    discovered = {ref.key for pkg in (*old_packages, *new_res.packages) for ref in pkg.interfaces}
+    unused = unused_suppressions(raw, config, new_ifaces, checked, discovered - checked)
     findings += finalize_findings(unused, config, level, dropped=dropped)
     return _Result(
         findings=findings,
