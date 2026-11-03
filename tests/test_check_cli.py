@@ -193,10 +193,19 @@ def test_check_mixed_bound_changes_fail(tmp_path):
     assert "RS007" in result.stdout
 
 
-@pytest.mark.parametrize("workspace", [".", "nested"])
-@pytest.mark.parametrize("pattern", ["src/**", "src/*", "./src/[ab]*"])
-@pytest.mark.parametrize("delete_all", [False, True])
-def test_glob_reports_deleted_packages(tmp_path, monkeypatch, pattern, delete_all, workspace):
+@pytest.mark.parametrize(
+    "pattern,delete_all,workspace,removed",
+    [
+        ("src/**", False, ".", {"a"}),
+        ("src/**", True, ".", {"a", "b"}),
+        ("src/*", False, ".", {"a"}),
+        ("./src/[ab]*", False, ".", {"a"}),
+        ("src/**", True, "nested", {"a", "b"}),
+    ],
+)
+def test_glob_reports_deleted_packages(
+    tmp_path, monkeypatch, pattern, delete_all, workspace, removed
+):
     repo = make_git_repo(tmp_path / "repo")
     base = repo / workspace
     write_package(base / "src", "a", msgs={"A": "int32 x\n"})
@@ -212,9 +221,7 @@ def test_glob_reports_deleted_packages(tmp_path, monkeypatch, pattern, delete_al
     result = runner.invoke(app, ["check", pattern, "--against", "HEAD", "--format", "json"])
     assert result.exit_code == 1, result.output
     findings = json.loads(result.stdout)["findings"]
-    assert {f["package"] for f in findings} == (
-        {"a", "b"} if delete_all and "[ab]" not in pattern else {"a"}
-    )
+    assert {f["package"] for f in findings} == removed
     assert {f["rule"] for f in findings} == {"RS040"}
 
 

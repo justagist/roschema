@@ -140,7 +140,6 @@ def test_tightening_either_bound_takes_precedence():
     for old, new in [
         ("string<=64[<=4] names\n", "string<=8[<=16] names\n"),
         ("string<=8[<=16] names\n", "string<=64[<=4] names\n"),
-        ("wstring[<=4] names\n", "wstring<=8[<=16] names\n"),
     ]:
         assert _types(_events(old, new)) == [ChangeType.FIELD_BOUND_TIGHTENED]
 

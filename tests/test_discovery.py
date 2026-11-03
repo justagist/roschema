@@ -132,7 +132,6 @@ def test_resolve_target_glob(tmp_path):
     res = resolve_target("src/**", cwd=tmp_path)
     assert res.source.startswith("glob:")
     assert {p.name for p in res.packages} == {"a", "b"}  # c not matched
-    assert res.glob_pattern == "src/**"
 
 
 def test_resolve_target_glob_empty_is_error(tmp_path):

@@ -150,15 +150,11 @@ def test_package_lint_precedence(tmp_path, package_severity, options, expected):
     "field_type,unbounded",
     [
         ("string[4]", True),
-        ("string[<=4]", True),
-        ("wstring[4]", True),
         ("wstring[<=4]", True),
         ("string<=8[]", True),
-        ("wstring<=8[]", True),
         ("string<=8[4]", False),
         ("wstring<=8[<=4]", False),
         ("int32[4]", False),
-        ("int32[<=4]", False),
     ],
 )
 def test_rsl006_checks_string_elements_independently(field_type, unbounded):

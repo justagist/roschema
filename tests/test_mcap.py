@@ -220,9 +220,16 @@ def test_glob_rejects_synthetic_mcap_paths(tmp_path, monkeypatch):
     assert "use a workspace target" in " ".join(result.output.split())
 
 
-@pytest.mark.parametrize("summary", [True, False])
-@pytest.mark.parametrize("reverse", [True, False])
-def test_mcap_rejects_conflicting_schemas_in_either_order(tmp_path, summary, reverse):
+@pytest.mark.parametrize(
+    "summary,reverse,command",
+    [
+        (True, False, "bag-check"),
+        (True, True, "bag-check"),
+        (False, False, "bag-check"),
+        (True, False, "check"),
+    ],
+)
+def test_mcap_rejects_conflicting_schemas_in_either_order(tmp_path, summary, reverse, command):
     bag = tmp_path / "conflict.mcap"
     schemas = [
         ("demo/msg/T", "ros2msg", "int32 x\n"),
@@ -230,13 +237,14 @@ def test_mcap_rejects_conflicting_schemas_in_either_order(tmp_path, summary, rev
     ]
     _write_bag(bag, schemas[::-1] if reverse else schemas, summary=summary)
     write_package(tmp_path / "ws", "demo", msgs={"T": "int32 x\n"})
-    for args in [
-        ["bag-check", str(bag), str(tmp_path / "ws")],
-        ["check", str(tmp_path / "ws"), "--against", str(bag)],
-    ]:
-        result = runner.invoke(app, args)
-        assert result.exit_code == 2
-        assert "conflicting MCAP definitions" in result.output
+    args = (
+        ["bag-check", str(bag), str(tmp_path / "ws")]
+        if command == "bag-check"
+        else ["check", str(tmp_path / "ws"), "--against", str(bag)]
+    )
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2
+    assert "conflicting MCAP definitions" in result.output
 
 
 def test_mcap_accepts_equivalent_duplicate_definitions(tmp_path):

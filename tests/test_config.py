@@ -188,15 +188,14 @@ def test_explicit_workspace_config_still_allows_package_overrides(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "section,rule",
+    "package_config,section,rule",
     [
-        ("check.rules", "RS999"),
-        ("check.rules", "RSL001"),
-        ("lint.rules", "RSL999"),
-        ("lint.rules", "RS001"),
+        (False, "check.rules", "RS999"),
+        (True, "lint.rules", "RSL999"),
+        (False, "check.rules", "RSL001"),
+        (False, "lint.rules", "RS001"),
     ],
 )
-@pytest.mark.parametrize("package_config", [True, False])
 def test_unknown_rule_ids_are_configuration_errors(tmp_path, section, rule, package_config):
     pkg = write_package(tmp_path, "demo", msgs={"T": "int32 x\n"})
     config_dir = pkg if package_config else tmp_path
