@@ -133,13 +133,13 @@ def test_finalize_allowlist_rule_scoped():
     assert out[0].suppressed is False  # allow entry names a different rule
 
 
-def test_explicit_config_bypasses_level_preset():
+def test_configured_severity_keeps_level_preset():
+    """Restating or raising a rule's severity must not widen the selected level."""
     behaviour = _finding("RS030", severity="warn", levels=("behavior",))
-    # default level is source: behaviour findings are filtered out
-    assert finalize_findings([behaviour], Config(), None) == []
-    # explicitly configuring the rule bypasses the level preset
-    cfg = Config(workspace=ScopeConfig(rules={"RS030": "warn"}))
-    assert len(finalize_findings([behaviour], cfg, None)) == 1
+    for severity in ("warn", "error"):
+        cfg = Config(workspace=ScopeConfig(rules={"RS030": severity}))
+        assert finalize_findings([behaviour], cfg, None) == []
+        assert len(finalize_findings([behaviour], cfg, "behavior")) == 1
 
 
 def test_rs060_opt_in():
