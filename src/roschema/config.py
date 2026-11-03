@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import sys
 from dataclasses import dataclass, field, replace
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import cast
 
@@ -106,7 +107,7 @@ class Config:
         entries = list(pkg_cfg.allow) if pkg_cfg is not None else []
         entries += list(self.workspace.allow)
         for entry in entries:
-            if entry.target != finding.qualified_target:
+            if not fnmatchcase(finding.qualified_target, entry.target):
                 continue
             if not entry.rules or finding.rule in entry.rules:
                 return entry.reason

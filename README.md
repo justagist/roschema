@@ -315,6 +315,12 @@ This works for lint rules too.
 `reason` is required. `rules` limits the entry to those rule IDs; omit it to
 allow every rule for that target.
 
+A target may be a glob, to allow a planned break across a whole interface or
+package without listing every member: `*` matches any run of characters
+(including `/` and `.`), `?` one character and `[abc]` one of a set. For
+example `"my_msgs/msg/State*"` covers `State` itself and all its members, and
+`"vendor_msgs/*"` everything in that package.
+
 ## Output
 
 **Text** (the default) starts with what was compared, groups findings by
