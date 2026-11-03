@@ -77,6 +77,18 @@ def test_string_bound_removed_is_loosened():
     ]
 
 
+def test_sequence_bound_added_or_removed_is_a_bound_change():
+    assert _types(_events("int32[] x\n", "int32[<=4] x\n")) == [
+        ChangeType.FIELD_BOUND_TIGHTENED
+    ]
+    assert _types(_events("int32[<=4] x\n", "int32[] x\n")) == [
+        ChangeType.FIELD_BOUND_LOOSENED
+    ]
+    assert _types(_events("int32[<=4] x\n", "int32[4] x\n")) == [
+        ChangeType.FIELD_ARRAY_KIND_CHANGED
+    ]
+
+
 def test_reordered():
     events = _events("int32 a\nint32 b\n", "int32 b\nint32 a\n")
     assert _types(events) == [ChangeType.FIELD_REORDERED]

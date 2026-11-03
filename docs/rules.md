@@ -91,12 +91,12 @@ float32 yaw
 
 ### RS006 -- Array kind changed
 
-A field changed between fixed, bounded and unbounded array forms.
+A field changed between scalar, fixed-size array and sequence forms.
 
 - Levels: wire, source
 - Default severity: error
 
-*Rationale:* Fixed, bounded and unbounded arrays use different CDR encodings and generate different container types.
+*Rationale:* A sequence carries a length prefix that a fixed-size array and a scalar do not, so the CDR layout and the generated container type both change. Adding or removing a sequence bound is reported as RS007 or RS008 instead.
 
 ```
 # before
@@ -107,7 +107,7 @@ int32[8] data
 
 ### RS007 -- Bound tightened
 
-A bounded array or string had its capacity reduced.
+A sequence or string gained a bound or had its bound reduced.
 
 - Levels: wire
 - Default severity: error
@@ -123,7 +123,7 @@ string<=16 name
 
 ### RS008 -- Bound loosened
 
-A bounded array or string had its capacity increased.
+A sequence or string lost its bound or had its bound increased.
 
 - Levels: wire
 - Default severity: warn

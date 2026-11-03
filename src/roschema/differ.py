@@ -51,6 +51,8 @@ _STRUCTURAL = frozenset(
     }
 )
 
+_SEQUENCES = frozenset({ArrayKind.BOUNDED, ArrayKind.UNBOUNDED})
+
 
 @dataclass(frozen=True)
 class ChangeEvent:
@@ -237,13 +239,16 @@ def _classify_type_change(old: Field, new: Field, package: str) -> ChangeType | 
     o, n = _qualified(old.type, package), _qualified(new.type, package)
     if o.base != n.base or o.package != n.package or o.is_builtin != n.is_builtin:
         return ChangeType.FIELD_TYPE_CHANGED
-    if o.array_kind != n.array_kind:
+    # Bounded and unbounded sequences share a CDR encoding, so moving between
+    # them is a bound change (an unbounded sequence has infinite capacity).
+    sequences = (o.array_kind in _SEQUENCES) and (n.array_kind in _SEQUENCES)
+    if o.array_kind != n.array_kind and not sequences:
         return ChangeType.FIELD_ARRAY_KIND_CHANGED
     # A fixed array's size is part of the wire layout: any change is a type change.
     if o.array_kind is ArrayKind.FIXED and o.array_bound != n.array_bound:
         return ChangeType.FIELD_TYPE_CHANGED
     bounds = [(o.string_bound, n.string_bound)]
-    if o.array_kind is ArrayKind.BOUNDED:
+    if sequences:
         bounds.append((o.array_bound, n.array_bound))
     changes = [_bound_direction(old, new) for old, new in bounds if old != new]
     # A tightening must not be hidden by a simultaneous capacity increase.
