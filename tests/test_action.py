@@ -73,6 +73,8 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
     actual, injected = _run_action(tmp_path, inputs)
     assert not injected, "Action executed shell code from an input"
     expected = [
+        "--refresh-package",
+        "roschema",
         "--from",
         inputs["version"],
         "roschema",

@@ -29,8 +29,9 @@ inputs:
     default: ""
   version:
     description: >-
-      roschema requirement for uvx. Unpinned runs the latest release; pin it
-      (e.g. "roschema==0.2.0") for reproducible results.
+      roschema requirement for uvx. Unpinned runs the latest release (refreshed
+      on every run, even with a uv cache); pin it (e.g. "roschema==0.2.0") for
+      reproducible results.
     default: roschema
 
 runs:
@@ -61,4 +62,4 @@ runs:
         for glob in "${excludes[@]}"; do
           args+=(--exclude "$glob")
         done
-        uvx --from "$ROSCHEMA_VERSION" roschema "${args[@]}"
+        uvx --refresh-package roschema --from "$ROSCHEMA_VERSION" roschema "${args[@]}"
