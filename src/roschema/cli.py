@@ -233,6 +233,7 @@ def _resolve_current(
         replaced = {pkg.name for pkg in res.packages}
         current = {key: iface for key, iface in current.items() if iface.package not in replaced}
         current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
+        target_packages = [pkg for pkg in target_packages if pkg.name not in replaced]
         if isinstance(res.vfs, RealFS):
             target_packages += [
                 replace(pkg, path=os.path.relpath(res.vfs.root / pkg.path, Path.cwd()))

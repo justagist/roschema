@@ -404,6 +404,19 @@ def test_bag_check_applies_target_package_config(tmp_path, monkeypatch):
     assert json.loads(result.stdout)["findings"] == []
 
 
+def test_bag_check_last_target_drops_earlier_target_config(tmp_path, monkeypatch):
+    """A replaced package's configuration must not apply to its replacement."""
+    first = write_package(tmp_path / "first", "demo", msgs={"T": "int32 x\n"})
+    (first / "roschema.toml").write_text('[check.rules]\nRS003 = "off"\n')
+    write_package(tmp_path / "second", "demo", msgs={"T": "float64 x\n"})
+    monkeypatch.chdir(tmp_path)
+    bag = tmp_path / "replaced.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), "first/demo", "second/demo"])
+    assert result.exit_code == 1
+    assert "RS003" in result.stdout
+
+
 def test_mcap_without_schemas_is_a_tool_error(tmp_path):
     bag = tmp_path / "empty.mcap"
     _write_bag(bag, {})
