@@ -3,6 +3,19 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `docs/rules.md` opens with a one-line overview of every rule, and lint rules
+  show flagged and preferred examples.
+- `CONTRIBUTING.md` with the development checks and release process.
+
+### Changed
+
+- README restructured for new users: levels and severities, target resolution,
+  suppression syntax, exit codes, Action inputs and troubleshooting.
+
 ## [0.2.0] - 2026-11-03
 
 ### Added
