@@ -12,8 +12,10 @@ inputs:
     description: Baseline -- a git ref, directory, .mcap bag or roschema.lock.
     default: origin/main
   level:
-    description: Reporting level (wire, source, introspection, behavior).
-    default: source
+    description: >-
+      Reporting level (wire, source, introspection, behavior). Empty uses the
+      level configured in roschema.toml, else source.
+    default: ""
   format:
     description: Output format (text, json, github).
     default: github
@@ -26,7 +28,9 @@ inputs:
       whitespace only so patterns reach roschema literally.
     default: ""
   version:
-    description: roschema version/specifier for uvx (e.g. "roschema==0.1.0").
+    description: >-
+      roschema requirement for uvx. Unpinned runs the latest release; pin it
+      (e.g. "roschema==0.1.3") for reproducible results.
     default: roschema
 
 runs:
@@ -46,8 +50,10 @@ runs:
         set -euo pipefail
         args=(check "$ROSCHEMA_TARGET"
               --against "$ROSCHEMA_AGAINST"
-              --level "$ROSCHEMA_LEVEL"
               --format "$ROSCHEMA_FORMAT")
+        if [ -n "$ROSCHEMA_LEVEL" ]; then
+          args+=(--level "$ROSCHEMA_LEVEL")
+        fi
         if [ "$ROSCHEMA_DEEP" = "true" ]; then
           args+=(--deep)
         fi
