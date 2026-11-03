@@ -430,7 +430,8 @@ jobs:
 
 By default the Action installs the latest roschema release on every run, so new
 rules can change results without any change on your side. Set `version` to pin
-a release instead. A lockfile or directory baseline needs no `fetch-depth: 0`,
+a release instead; the job summary needs 0.4.0 or later, and is skipped for
+older releases. A lockfile or directory baseline needs no `fetch-depth: 0`,
 because it is part of the checkout.
 
 ## Troubleshooting

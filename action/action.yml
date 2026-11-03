@@ -78,11 +78,14 @@ runs:
         if [ "$ROSCHEMA_WARNINGS_AS_ERRORS" = "true" ]; then
           args+=(--warnings-as-errors)
         fi
-        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        # Installs (or refreshes) the requested roschema, whose options are
+        # then checked: a pinned release from before 0.4.0 has no --summary.
+        help=$(uvx --refresh-package roschema --from "$ROSCHEMA_VERSION" roschema check --help)
+        if [[ -n "${GITHUB_STEP_SUMMARY:-}" && "$help" == *--summary* ]]; then
           args+=(--summary "$GITHUB_STEP_SUMMARY")
         fi
         read -r -a excludes <<< "${ROSCHEMA_EXCLUDE//$'\n'/ }"
         for glob in "${excludes[@]}"; do
           args+=(--exclude "$glob")
         done
-        uvx --refresh-package roschema --from "$ROSCHEMA_VERSION" roschema "${args[@]}"
+        uvx --from "$ROSCHEMA_VERSION" roschema "${args[@]}"
