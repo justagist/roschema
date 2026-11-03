@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from roschema.report import build_github, build_json, summarize
 from roschema.rules import Finding
 
@@ -68,6 +70,17 @@ def test_build_github_warning_and_skips_suppressed():
     )
     assert len(lines) == 1
     assert lines[0].startswith("::warning ")
+
+
+def test_build_github_escapes_command_text():
+    finding = replace(
+        _finding("RS021", new_file="a,b:c.msg", new_line=1),
+        message='constant value changed "50%" -> "75%\nx"',
+    )
+    assert build_github([finding]) == [
+        "::error file=a%2Cb%3Ac.msg,line=1,title=RS021::"
+        'RS021 demo/msg/T.a: constant value changed "50%25" -> "75%25%0Ax"'
+    ]
 
 
 def test_advisory_major():
