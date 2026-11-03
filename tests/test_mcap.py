@@ -194,3 +194,13 @@ def test_bag_check_multiple_targets(tmp_path, monkeypatch):
     assert result.exit_code == 1
     ids = result.stdout
     assert "pkg_a/msg/A" in ids and "pkg_b/msg/B" in ids
+
+
+def test_glob_rejects_synthetic_mcap_paths(tmp_path, monkeypatch):
+    write_package(tmp_path / "src", "demo_msgs", msgs={"Pose": POSE_V1})
+    bag = tmp_path / "rec.mcap"
+    _write_bag(bag, {"demo_msgs/msg/Pose": POSE_CONCAT})
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["check", "src/**", "--against", str(bag)])
+    assert result.exit_code == 2
+    assert "use a workspace target" in " ".join(result.output.split())

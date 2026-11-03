@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 
+import pytest
 from typer.testing import CliRunner
 
 from _helpers import git_commit_all, make_git_repo, write_package
@@ -189,3 +191,50 @@ def test_check_mixed_bound_changes_fail(tmp_path):
     result = runner.invoke(app, ["check", str(new), "--against", str(old)])
     assert result.exit_code == 1
     assert "RS007" in result.stdout
+
+
+@pytest.mark.parametrize("workspace", [".", "nested"])
+@pytest.mark.parametrize("pattern", ["src/**", "src/*", "./src/[ab]*"])
+@pytest.mark.parametrize("delete_all", [False, True])
+def test_glob_reports_deleted_packages(tmp_path, monkeypatch, pattern, delete_all, workspace):
+    repo = make_git_repo(tmp_path / "repo")
+    base = repo / workspace
+    write_package(base / "src", "a", msgs={"A": "int32 x\n"})
+    write_package(base / "src" / "nested", "b", msgs={"B": "int32 y\n"})
+    write_package(base / "outside", "other", msgs={"T": "int32 z\n"})
+    git_commit_all(repo, "baseline")
+    shutil.rmtree(base / "src" / "a")
+    shutil.rmtree(base / "outside")
+    if delete_all:
+        shutil.rmtree(base / "src")
+    monkeypatch.chdir(base)
+
+    result = runner.invoke(app, ["check", pattern, "--against", "HEAD", "--format", "json"])
+    assert result.exit_code == 1, result.output
+    findings = json.loads(result.stdout)["findings"]
+    assert {f["package"] for f in findings} == (
+        {"a", "b"} if delete_all and "[ab]" not in pattern else {"a"}
+    )
+    assert {f["rule"] for f in findings} == {"RS040"}
+
+
+def test_glob_without_matches_on_either_side_is_error(tmp_path, monkeypatch):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo, "other", msgs={"T": "int32 z\n"})
+    git_commit_all(repo, "baseline")
+    monkeypatch.chdir(repo)
+    result = runner.invoke(app, ["check", "src/**", "--against", "HEAD"])
+    assert result.exit_code == 2
+    assert "matched no interface packages" in result.output
+
+
+def test_glob_reports_deletion_in_directory_baseline(tmp_path, monkeypatch):
+    old, new = tmp_path / "old", tmp_path / "new"
+    write_package(old / "src", "gone", msgs={"T": "int32 x\n"})
+    write_package(old / "outside", "other", msgs={"T": "int32 x\n"})
+    new.mkdir()
+    monkeypatch.chdir(new)
+    result = runner.invoke(app, ["check", "src/**", "--against", str(old)])
+    assert result.exit_code == 1
+    assert "gone/msg/T" in result.stdout
+    assert "other/msg/T" not in result.stdout

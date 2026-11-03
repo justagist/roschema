@@ -51,5 +51,5 @@ class Resolution:
     vfs: VFS
     packages: tuple[DiscoveredPackage, ...]
     source: str
-    scope: frozenset[str] | None = None
-    """When set (glob targets), restrict a baseline diff to these package names."""
+    glob_pattern: str | None = None
+    """Directory glob to resolve independently against the comparison baseline."""

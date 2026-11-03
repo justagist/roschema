@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -37,7 +38,7 @@ from .loader import load_interfaces
 from .parser import ParseError
 from .report import build_github, build_json, render_lint, render_text
 from .rules import Finding, all_lint_rules, evaluate, lint_interfaces
-from .vfs import RealFS, VfsError, git_toplevel
+from .vfs import GitTreeFS, RealFS, VfsError, git_toplevel
 
 app = typer.Typer(
     help="Breaking-change detection, linting and formatting for ROS 2 interfaces.",
@@ -210,23 +211,39 @@ def _compute(
     deep: bool = False,
 ) -> tuple[list[Finding], str, str, str]:
     """Resolve both sides, diff and finalize; the shared check pipeline."""
-    new_res = resolve_target(target)
+    new_res = resolve_target(target, allow_empty_glob=True)
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
     old_res = resolve_old(new_res.vfs.root)
     config = load_config(new_res.vfs.root, new_res.packages, config_path)
     excludes = exclude or []
     new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, excludes))
-    old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
-    if new_res.scope is not None:
-        # a glob target scopes both sides to the matched packages, so baseline-only
-        # packages outside the glob are not reported as removed
-        old_ifaces = {k: v for k, v in old_ifaces.items() if v.package in new_res.scope}
+    old_packages = old_res.packages
+    prefix = _display_prefix(new_res.vfs.root)
+    if new_res.glob_pattern is not None:
+        if old_res.source.startswith(("mcap:", "lock:")):
+            raise VfsError(
+                "path glob targets require a Git or directory baseline; "
+                "use a workspace target for lockfile or MCAP baselines"
+            )
+        pattern = new_res.glob_pattern
+        if isinstance(old_res.vfs, GitTreeFS):
+            pattern = posixpath.join(prefix, pattern)
+        manifests = set(old_res.vfs.glob(pattern.rstrip("/") + "/**/package.xml"))
+        scope = {p.name for p in new_res.packages} | {
+            p.name
+            for p in old_packages
+            if posixpath.join(p.path, "package.xml") in manifests
+        }
+        if not scope:
+            raise VfsError(f"target glob {target!r} matched no interface packages on either side")
+        old_packages = tuple(p for p in old_packages if p.name in scope)
+    old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
     raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
     if deep:
         raw = raw + transitive_findings(new_ifaces, raw)
     findings = finalize_findings(raw, config, level)
-    return findings, new_res.source, old_res.source, _display_prefix(new_res.vfs.root)
+    return findings, new_res.source, old_res.source, prefix
 
 
 def _display_prefix(target_dir: Path) -> str:

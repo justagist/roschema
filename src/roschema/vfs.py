@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from fnmatch import translate
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -82,7 +83,8 @@ def _glob_to_regex(pattern: str) -> re.Pattern[str]:
     """Translate a glob pattern into a full-match regex.
 
     ``**/`` matches zero or more directory segments, ``*`` matches within a
-    single segment, ``?`` matches one non-separator character.
+    single segment, ``?`` matches one non-separator character, and character
+    classes follow :mod:`fnmatch`.
     """
     out: list[str] = []
     i = 0
@@ -100,6 +102,19 @@ def _glob_to_regex(pattern: str) -> re.Pattern[str]:
         elif pattern[i] == "?":
             out.append("[^/]")
             i += 1
+        elif pattern[i] == "[":
+            end = i + 1
+            if end < n and pattern[end] == "!":
+                end += 1
+            if end < n and pattern[end] == "]":
+                end += 1
+            end = pattern.find("]", end)
+            if end == -1:
+                out.append(r"\[")
+                i += 1
+            else:
+                out.append("(?=[^/])" + translate(pattern[i : end + 1])[:-2])
+                i = end + 1
         else:
             out.append(re.escape(pattern[i]))
             i += 1
