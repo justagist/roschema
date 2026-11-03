@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections import Counter
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
 from ..rules import Finding
+from .changes import ADDED, Change
 
 
 @dataclass(frozen=True)
@@ -28,14 +30,23 @@ class Summary:
     advisories: tuple[PackageAdvisory, ...]
 
 
+# New interfaces named in the coverage line; the rest are counted.
+_NAMED = 3
+
+
 @dataclass(frozen=True)
 class Coverage:
     """How many interfaces a check compared, counted across both sides."""
 
     packages: int
     compared: int  # present on both sides
-    target_only: int
+    new: tuple[str, ...]  # interface keys only in the target, sorted
     baseline_only: int
+
+    @property
+    def target_only(self) -> int:
+        """Number of interfaces only in the target."""
+        return len(self.new)
 
     @property
     def baseline_empty(self) -> bool:
@@ -43,14 +54,20 @@ class Coverage:
         return self.compared + self.baseline_only == 0
 
     def describe(self) -> str:
-        """One-line description, e.g. ``compared 3 interface(s) in 1 package(s)``."""
-        text = f"compared {self.compared} interface(s) in {self.packages} package(s)"
-        extra = [
-            f"{count} only in the {side}"
-            for count, side in ((self.target_only, "target"), (self.baseline_only, "baseline"))
-            if count
-        ]
-        return f"{text}; {', '.join(extra)}" if extra else text
+        """One-line description naming the first few new interfaces.
+
+        For example ``compared 3 interface(s) in 1 package(s); 1 new
+        (my_msgs/msg/Pose)``.
+        """
+        parts = [f"compared {self.compared} interface(s) in {self.packages} package(s)"]
+        if self.new:
+            names = ", ".join(self.new[:_NAMED])
+            if len(self.new) > _NAMED:
+                names += f" and {len(self.new) - _NAMED} more"
+            parts.append(f"{len(self.new)} new ({names})")
+        if self.baseline_only:
+            parts.append(f"{self.baseline_only} removed")
+        return "; ".join(parts)
 
 
 def coverage(old: Collection[str], new: Collection[str]) -> Coverage:
@@ -59,13 +76,17 @@ def coverage(old: Collection[str], new: Collection[str]) -> Coverage:
     return Coverage(
         packages=len({key.split("/", 1)[0] for key in old_keys | new_keys}),
         compared=len(old_keys & new_keys),
-        target_only=len(new_keys - old_keys),
+        new=tuple(sorted(new_keys - old_keys)),
         baseline_only=len(old_keys - new_keys),
     )
 
 
-def summarize(findings: list[Finding]) -> Summary:
-    """Compute counts and per-package advisories from finalized findings."""
+def summarize(findings: list[Finding], changes: Sequence[Change] = ()) -> Summary:
+    """Compute counts and per-package advisories from finalized findings.
+
+    Additions among ``changes`` (an added interface or constant) are not
+    findings, but they make a package's advice at least MINOR.
+    """
     reported = [f for f in findings if not f.suppressed]
     errors = sum(1 for f in reported if f.severity == "error")
     warnings = sum(1 for f in reported if f.severity == "warn")
@@ -74,7 +95,11 @@ def summarize(findings: list[Finding]) -> Summary:
     by_package: dict[str, list[Finding]] = {}
     for finding in reported:
         by_package.setdefault(finding.package, []).append(finding)
-    advisories = tuple(_advise(package, by_package[package]) for package in sorted(by_package))
+    added = Counter(c.package for c in changes if c.reason in ADDED)
+    advisories = tuple(
+        _advise(package, by_package.get(package, []), added[package])
+        for package in sorted(by_package.keys() | added.keys())
+    )
     return Summary(
         total=len(reported),
         errors=errors,
@@ -84,14 +109,14 @@ def summarize(findings: list[Finding]) -> Summary:
     )
 
 
-def _advise(package: str, findings: list[Finding]) -> PackageAdvisory:
+def _advise(package: str, findings: list[Finding], added: int) -> PackageAdvisory:
     wire_source_errors = [
         f for f in findings if f.severity == "error" and set(f.levels) & {"wire", "source"}
     ]
     if wire_source_errors:
         n = len(wire_source_errors)
         return PackageAdvisory(package, "MAJOR", f"{n} wire/source-breaking change(s)")
-    additions = [f for f in findings if f.rule == "RS002"]
+    additions = added + sum(1 for f in findings if f.rule == "RS002")
     if additions:
-        return PackageAdvisory(package, "MINOR", f"{len(additions)} additive change(s)")
+        return PackageAdvisory(package, "MINOR", f"{additions} additive change(s)")
     return PackageAdvisory(package, "PATCH", f"{len(findings)} change(s)")

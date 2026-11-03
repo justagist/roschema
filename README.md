@@ -113,6 +113,9 @@ roschema bag-check recording.mcap
 
 # what would be checked? (discovered packages and interfaces)
 roschema ls
+
+# what does a rule report, and why?
+roschema explain RS004
 ```
 
 ## Checking
@@ -120,7 +123,7 @@ roschema ls
 ```
 roschema check [TARGET] --against BASELINE [--level LEVEL] [--format text|json|github]
                [--deep | --no-deep] [--exit-zero] [--warnings-as-errors] [--allow-empty]
-               [--config PATH] [--exclude GLOB]
+               [--verbose] [--summary FILE] [--config PATH] [--exclude GLOB]
 ```
 
 `TARGET` selects what to check; omit it to check every interface package below
@@ -144,7 +147,10 @@ automatically. Initialised git submodules are compared at the commit the
 baseline records for them.
 
 Every report says how much was compared, for example `compared 12 interface(s)
-in 3 package(s); 1 only in the target`. A baseline with no interfaces at all is
+in 3 package(s); 1 new (my_msgs/msg/Status)`. New interfaces are not findings,
+since adding one breaks nothing; the line names the first few so that an
+unexpected one (say, from an unrelated checkout below the target) is easy to
+spot. A baseline with no interfaces at all is
 an error (exit `2`): every current interface would look newly added, so the
 check would pass without comparing anything. That usually means the wrong
 baseline or target; on the pull request that adds the first interfaces, pass
@@ -213,7 +219,7 @@ same. Comparison ignores it.
 ```
 roschema bag-check BAG.mcap [TARGETS...] [--level LEVEL] [--config PATH]
                    [--format text|json|github] [--exit-zero] [--warnings-as-errors]
-                   [--exclude GLOB]
+                   [--verbose] [--summary FILE] [--exclude GLOB]
 ```
 
 Needs the `bag` extra (`uv tool install 'roschema[bag]'`).
@@ -306,15 +312,26 @@ allow every rule for that target.
 package and ends with a summary and a semver advice per package:
 
 - **MAJOR** when the package has a wire- or source-level error;
-- **MINOR** when its only notable change is an added field (RS002) whose
-  severity you lowered to `warn`;
+- **MINOR** when it adds an interface or a constant (neither is a finding,
+  since neither breaks anything), or an added field (RS002) whose severity you
+  lowered to `warn`;
 - **PATCH** otherwise.
 
-The advice only covers reported findings. Additions such as a new interface or
-constant are not findings, so they never raise the advice to MINOR on their own.
+**`--verbose`** also lists, under "not reported", every change that produced no
+reported finding, and why: a new interface or constant (no rule reports either,
+at any level; an added field is RS002), a rule whose level is outside the one
+being checked, a rule that is off, or a suppression, with the allowlist reason.
+Comment-only edits are not changes, so they never appear.
 
 **`--format github`** prints what was compared, then emits `::error`/`::warning`
 workflow commands, which GitHub shows as annotations on the PR diff.
+
+**`--summary FILE`** appends a Markdown report to `FILE` as well, whatever the
+`--format`: what was compared, a table of findings linked to the rule
+reference, the semver advice, and the unreported changes in a collapsed
+section. Pointed at `$GITHUB_STEP_SUMMARY`, it becomes the job summary, which
+matters because GitHub shows only the first 10 error and 10 warning annotations
+of a step.
 
 **`--format json`** emits a stable document (`version: 1`):
 
@@ -333,7 +350,8 @@ workflow commands, which GitHub shows as annotations on the PR diff.
       "message": "type changed float32 -> float64",
       "old": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
       "new": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
-      "suppressed": false
+      "suppressed": false,
+      "help_uri": "https://github.com/justagist/roschema/blob/v0.4.0/docs/rules.md#rs003----field-type-changed"
     }
   ],
   "summary": {
@@ -354,7 +372,12 @@ workflow commands, which GitHub shows as annotations on the PR diff.
 
 `old`/`new` are `null` when there is no corresponding side (a removed interface
 has no `new`). `coverage` counts interfaces present on both sides (`compared`)
-and on one side only. `lint` output has no `advisories` or `coverage`.
+and on one side only. `help_uri` links to the rule's section of the
+[rule reference](docs/rules.md) for the installed release. With `--verbose`, a
+`changes` array lists the unreported changes (each with `rule`, `package`,
+`interface`, `section`, `target`, `message` and `reason`), including suppressed
+findings with the reason they are suppressed. `lint` output has no
+`advisories`, `coverage` or `changes`.
 
 ## Exit codes
 
@@ -371,7 +394,8 @@ turns `1` into `0` for `check`, `bag-check` and `lint`; tool errors still exit
 ## GitHub Action
 
 A composite Action runs `roschema check` on the runner (no setup needed) and
-posts the findings as annotations on the PR diff:
+posts the findings as annotations on the PR diff, with a full report (findings,
+semver advice and unreported changes) as the job summary:
 
 ```yaml
 # .github/workflows/interfaces.yml
@@ -386,7 +410,7 @@ jobs:
       - uses: justagist/roschema/action@main
         with:
           against: origin/${{ github.base_ref }}
-          # version: "roschema==0.3.0"   # pin a release for reproducible results
+          # version: "roschema==0.4.0"   # pin a release for reproducible results
           # level: source
           # deep: "true"
           # warnings-as-errors: "true"
@@ -413,8 +437,10 @@ because it is part of the checkout.
 ## Troubleshooting
 
 **"no breaking changes found", but you expected some.** The line under the
-header says how many interfaces were compared. Run `roschema ls` with the same
-target to see which packages and interfaces are discovered, then check that:
+header says how many interfaces were compared, and `--verbose` lists the changes
+that were seen but not reported, with the reason. Run `roschema ls` with the
+same target to see which packages and interfaces are discovered, then check
+that:
 
 - the packages are not below a `COLCON_IGNORE` or `AMENT_IGNORE` marker;
 - a package-name target did not fall back to the installed copy (the warning
@@ -431,6 +457,7 @@ shown in [Configuration](#configuration); the error suggests the closest one.
 
 Every rule, its levels, default severity, rationale and an example is
 documented in [docs/rules.md](docs/rules.md), generated from the rule metadata.
+`roschema explain RULE` prints the same section in the terminal.
 
 ## Non-goals
 

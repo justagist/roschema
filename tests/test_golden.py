@@ -14,10 +14,18 @@ from roschema.discovery import discover
 from roschema.loader import load_interfaces
 from roschema.report import build_json, coverage
 from roschema.rules import evaluate
+from roschema.rules.gendocs import docs_url
 from roschema.vfs import RealFS
 
 FIXTURES = Path(__file__).parent / "fixtures"
 runner = CliRunner()
+
+
+def _without_help_uris(doc):
+    """Drop each finding's ``help_uri``, which names the installed version."""
+    for finding in doc["findings"]:
+        assert finding.pop("help_uri") == docs_url(finding["rule"])
+    return doc
 
 
 def _load(side: str):
@@ -30,7 +38,7 @@ def test_golden_pipeline_matches():
     findings = finalize_findings(evaluate(diff_interfaces(old, new)), Config(), None)
     doc = build_json(findings, coverage=coverage(old, new))
     golden = json.loads((FIXTURES / "golden_check.json").read_text())
-    assert doc == golden
+    assert _without_help_uris(doc) == golden
 
 
 def test_golden_via_cli_json():
@@ -48,4 +56,4 @@ def test_golden_via_cli_json():
     assert result.exit_code == 1  # errors present
     doc = json.loads(result.stdout)
     golden = json.loads((FIXTURES / "golden_check.json").read_text())
-    assert doc == golden
+    assert _without_help_uris(doc) == golden

@@ -3,6 +3,26 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-03
+
+### Added
+
+- JSON findings link to their rule's documentation (`help_uri`).
+- `roschema explain RULE` prints a rule's reference section.
+- `check --verbose` and `bag-check --verbose` list the changes that are not
+  reported (added, outside the level, rule off or suppressed) with the reason;
+  JSON adds a `changes` array.
+- `--summary FILE` appends a Markdown report; the Action writes it to the job
+  summary, so every finding and the semver advice are visible even when GitHub
+  truncates the annotations.
+
+### Changed
+
+- The semver advice suggests MINOR for a package that adds an interface or a
+  constant, and is printed even when there are no findings.
+- The coverage line names the first few new interfaces and says "new" and
+  "removed" instead of "only in the target" and "only in the baseline".
+
 ## [0.3.0] - 2026-11-03
 
 ### Added

@@ -96,18 +96,21 @@ class Config:
             return pkg_cfg.deep
         return self.workspace.deep or False
 
-    def is_allowed(self, finding: Finding) -> bool:
-        """Whether an allowlist entry covers this finding."""
-        entries = list(self.workspace.allow)
+    def allow_reason(self, finding: Finding) -> str | None:
+        """The reason of the allowlist entry covering this finding, if any.
+
+        A package entry takes precedence over a workspace one, as package
+        configuration does elsewhere.
+        """
         pkg_cfg = self.packages.get(finding.package)
-        if pkg_cfg is not None:
-            entries += list(pkg_cfg.allow)
+        entries = list(pkg_cfg.allow) if pkg_cfg is not None else []
+        entries += list(self.workspace.allow)
         for entry in entries:
             if entry.target != finding.qualified_target:
                 continue
             if not entry.rules or finding.rule in entry.rules:
-                return True
-        return False
+                return entry.reason
+        return None
 
 
 def finalize_findings(
@@ -115,6 +118,7 @@ def finalize_findings(
     config: Config,
     cli_level: str | None,
     default_level: str = DEFAULT_LEVEL,
+    dropped: list[tuple[Finding, str]] | None = None,
 ) -> list[Finding]:
     """Apply config to raw findings.
 
@@ -122,6 +126,7 @@ def finalize_findings(
     severities, and flags inline-suppressed / allowlisted findings (kept in the
     list with ``suppressed=True`` so they can still be counted and emitted).
     ``default_level`` applies when neither the CLI nor config sets a level.
+    Each dropped finding is appended to ``dropped``, if given, with the reason.
     """
     out: list[Finding] = []
     for finding in findings:
@@ -129,16 +134,24 @@ def finalize_findings(
         default = finding.severity
         severity = config.effective_severity(finding.rule, pkg, default)
         if severity == "off":
+            if dropped is not None:
+                dropped.append((finding, "rule off; enable it in [check.rules]"))
             continue
         finding = replace(finding, severity=severity)
         # An opt-in rule (off by default, like RS060) is reported once enabled
         # whatever the level; every other rule stays within the selected level.
         if default != "off":
-            bundle = LEVEL_BUNDLES[config.effective_level(pkg, cli_level, default_level)]
-            if not (set(finding.levels) & bundle):
+            level = config.effective_level(pkg, cli_level, default_level)
+            if not (set(finding.levels) & LEVEL_BUNDLES[level]):
+                if dropped is not None:
+                    dropped.append((finding, f"{finding.level}-level rule; checking at {level}"))
                 continue
-        if finding.rule in finding.inline_ignores or config.is_allowed(finding):
-            finding = replace(finding, suppressed=True)
+        if finding.rule in finding.inline_ignores:
+            finding = replace(finding, suppressed=True, suppressed_reason="an inline ignore")
+        elif (reason := config.allow_reason(finding)) is not None:
+            finding = replace(
+                finding, suppressed=True, suppressed_reason=f"the allowlist: {reason}"
+            )
         out.append(finding)
     return out
 

@@ -12,8 +12,14 @@ import pytest
 _ACTION = Path(__file__).resolve().parents[1] / "action" / "action.yml"
 
 
-def _run_action(tmp_path: Path, inputs: dict[str, str]) -> tuple[list[str], bool]:
-    """Run the Action's script with ``inputs``; return uvx's arguments and injection."""
+def _run_action(
+    tmp_path: Path, inputs: dict[str, str], step_summary: str | None = None
+) -> tuple[list[str], bool]:
+    """Run the Action's script with ``inputs``; return uvx's arguments and injection.
+
+    ``step_summary`` stands in for the runner's ``GITHUB_STEP_SUMMARY``, which is
+    otherwise unset even when the tests themselves run in GitHub Actions.
+    """
     action = _ACTION.read_text()
     script = textwrap.dedent(action.split("      run: |\n", 1)[1])
     # Render expressions as Actions would, so the test also catches interpolation.
@@ -26,11 +32,12 @@ def _run_action(tmp_path: Path, inputs: dict[str, str]) -> tuple[list[str], bool
     injection_marker = tmp_path / "executed"
     (tmp_path / "vendor_example").touch()
     env = {
-        **os.environ,
+        **{k: v for k, v in os.environ.items() if k != "GITHUB_STEP_SUMMARY"},
         **{f"ROSCHEMA_{name.upper().replace('-', '_')}": value for name, value in inputs.items()},
         "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
         "ARGUMENTS_FILE": str(arguments),
         "INJECTION_MARKER": str(injection_marker),
+        **({"GITHUB_STEP_SUMMARY": step_summary} if step_summary is not None else {}),
     }
     result = subprocess.run(
         ["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True
@@ -114,3 +121,9 @@ def test_action_defaults_leave_level_to_configuration(tmp_path):
     """Default inputs must not override the level configured in roschema.toml."""
     actual, _ = _run_action(tmp_path, _action_defaults())
     assert "--level" not in actual
+
+
+def test_action_writes_job_summary(tmp_path):
+    summary = str(tmp_path / "step summary.md")
+    actual, _ = _run_action(tmp_path, _action_defaults(), step_summary=summary)
+    assert actual[-2:] == ["--summary", summary]

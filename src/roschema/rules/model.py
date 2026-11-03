@@ -84,7 +84,8 @@ class Finding:
     ``level`` is the primary (most wire-significant) level for display/JSON;
     ``levels`` is the rule's full level set, used for ``--level`` filtering.
     ``inline_ignores`` are the rule IDs suppressed by a trailing
-    ``# roschema: ignore=...`` comment on the new-side member.
+    ``# roschema: ignore=...`` comment on the new-side member, and
+    ``suppressed_reason`` says why a suppressed finding is suppressed.
     """
 
     rule: str
@@ -101,6 +102,7 @@ class Finding:
     suppressed: bool = False
     levels: tuple[str, ...] = ()
     inline_ignores: tuple[str, ...] = ()
+    suppressed_reason: str = ""
 
     @property
     def package(self) -> str:

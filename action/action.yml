@@ -38,7 +38,7 @@ inputs:
   version:
     description: >-
       roschema requirement for uvx. Unpinned runs the latest release (refreshed
-      on every run, even with a uv cache); pin it (e.g. "roschema==0.3.0") for
+      on every run, even with a uv cache); pin it (e.g. "roschema==0.4.0") for
       reproducible results.
     default: roschema
 
@@ -77,6 +77,9 @@ runs:
         fi
         if [ "$ROSCHEMA_WARNINGS_AS_ERRORS" = "true" ]; then
           args+=(--warnings-as-errors)
+        fi
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          args+=(--summary "$GITHUB_STEP_SUMMARY")
         fi
         read -r -a excludes <<< "${ROSCHEMA_EXCLUDE//$'\n'/ }"
         for glob in "${excludes[@]}"; do

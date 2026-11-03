@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from roschema.report import build_github, build_json, summarize
+from roschema.report import build_github, build_json, coverage, summarize
+from roschema.report.changes import NEW_CONSTANT, NEW_INTERFACE, Change
 from roschema.rules import Finding
 
 
@@ -43,6 +44,7 @@ def test_build_json_schema():
         "old",
         "new",
         "suppressed",
+        "help_uri",
     }
     assert set(doc["summary"]) == {"total", "errors", "warnings", "suppressed", "advisories"}
 
@@ -93,6 +95,24 @@ def test_advisory_minor_for_additive_non_error():
     assert s.advisories[0].bump == "MINOR"
 
 
+def test_advisory_minor_for_added_interface_or_constant():
+    added = [
+        Change("other/msg/New", None, "", "interface added", NEW_INTERFACE),
+        Change("demo/msg/T", "message", "MODE_X", "constant added: uint8 MODE_X=3", NEW_CONSTANT),
+    ]
+    s = summarize([_finding("RS030", severity="warn", levels=("behavior",))], added)
+    assert [(a.package, a.bump, a.reason) for a in s.advisories] == [
+        ("demo", "MINOR", "1 additive change(s)"),
+        ("other", "MINOR", "1 additive change(s)"),
+    ]
+
+
+def test_advisory_major_outranks_additions():
+    added = [Change("demo/msg/New", None, "", "interface added", NEW_INTERFACE)]
+    s = summarize([_finding("RS001", levels=("wire", "source"))], added)
+    assert s.advisories[0].bump == "MAJOR"
+
+
 def test_advisory_patch():
     s = summarize([_finding("RS030", severity="warn", levels=("behavior",))])
     assert s.advisories[0].bump == "PATCH"
@@ -107,3 +127,11 @@ def test_summary_counts_and_suppressed():
         ]
     )
     assert (s.total, s.errors, s.warnings, s.suppressed) == (2, 1, 1, 1)
+
+
+def test_coverage_names_first_new_interfaces():
+    new = [f"p/msg/N{i}" for i in range(5)]
+    cov = coverage(["p/msg/A"], ["p/msg/A", *new])
+    assert cov.describe() == (
+        "compared 1 interface(s) in 1 package(s); 5 new (p/msg/N0, p/msg/N1, p/msg/N2 and 2 more)"
+    )

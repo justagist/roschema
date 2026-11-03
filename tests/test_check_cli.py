@@ -84,9 +84,101 @@ def test_check_reports_coverage(tmp_path):
         app, ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
     )
     assert (
-        "compared 1 interface(s) in 2 package(s); 2 only in the target, 1 only in the baseline"
-        in result.stdout
+        "compared 1 interface(s) in 2 package(s); 2 new (my_msgs/msg/C, other_msgs/msg/D); "
+        "1 removed" in result.stdout
     )
+
+
+def test_check_advises_minor_for_additions(tmp_path):
+    write_package(tmp_path / "old", "my_msgs", msgs={"S": "uint8 A=1\nuint8 mode\n"})
+    write_package(
+        tmp_path / "new",
+        "my_msgs",
+        msgs={"S": "uint8 A=1\nuint8 B=2\nuint8 mode\n", "T": "int32 t\n"},
+    )
+    args = ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0
+    assert "no breaking changes found" in result.stdout
+    assert "my_msgs: suggests MINOR version bump (2 additive change(s))" in result.stdout
+    doc = json.loads(runner.invoke(app, [*args, "--format", "json"]).stdout)
+    assert doc["summary"]["advisories"] == {"my_msgs": "MINOR"}
+
+
+def _unreported_sample(tmp_path):
+    write_package(tmp_path / "old", "p", msgs={"S": "uint8 A=1\nint32 x\nint32 y 5\nint32 gone\n"})
+    write_package(
+        tmp_path / "new",
+        "p",
+        msgs={"S": "uint8 A=1\nuint8 B=3\nint32 x\nint32 y 6\n", "T": "int32 t\n"},
+    )
+    (tmp_path / "new" / "roschema.toml").write_text(
+        '[check.allow]\n"p/msg/S.gone" = { rules = ["RS001"], reason = "removed in 2.0" }\n'
+    )
+    return ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
+
+
+def test_check_verbose_lists_unreported_changes(tmp_path):
+    args = _unreported_sample(tmp_path)
+    quiet = runner.invoke(app, args)
+    assert quiet.exit_code == 0
+    assert "not reported" not in quiet.stdout
+
+    result = runner.invoke(app, [*args, "--verbose"])
+    assert result.exit_code == 0
+    listed = result.stdout.split("not reported\n", 1)[1].splitlines()[:5]
+    assert [line.strip() for line in listed] == [
+        "p",
+        "p/msg/S.B: constant added: uint8 B=3  (a new constant breaks nothing)",
+        "RS001 p/msg/S.gone: field 'gone' removed  (suppressed by the allowlist: removed in 2.0)",
+        "RS030 p/msg/S.y: default changed 5 -> 6  (behavior-level rule; checking at source)",
+        "p/msg/T: interface added  (a new interface breaks nothing)",
+    ]
+
+
+def test_check_verbose_json_lists_changes(tmp_path):
+    args = [*_unreported_sample(tmp_path), "--format", "json"]
+    assert "changes" not in json.loads(runner.invoke(app, args).stdout)
+    doc = json.loads(runner.invoke(app, [*args, "--verbose"]).stdout)
+    assert [(c["rule"], c["target"], c["reason"]) for c in doc["changes"]] == [
+        (None, "B", "a new constant breaks nothing"),
+        (None, "", "a new interface breaks nothing"),
+        ("RS030", "y", "behavior-level rule; checking at source"),
+        ("RS001", "gone", "suppressed by the allowlist: removed in 2.0"),
+    ]
+
+
+def test_check_verbose_shows_reasons_literally(tmp_path):
+    args = _unreported_sample(tmp_path)
+    (tmp_path / "new" / "roschema.toml").write_text(
+        '[check.rules]\nRS030 = "off"\n'
+        '[check.allow]\n"p/msg/S.gone" = { rules = ["RS001"], reason = """removed\n'
+        '::warning::injected""" }\n'
+    )
+    text = runner.invoke(app, [*args, "--verbose"]).stdout
+    assert "(rule off; enable it in [check.rules])" in text
+
+    github = runner.invoke(app, [*args, "--verbose", "--format", "github"]).stdout
+    assert "suppressed by the allowlist: removed ::warning::injected" in github
+    assert not any(line.startswith("::warning::") for line in github.splitlines())
+
+
+def test_check_summary_write_error_is_a_tool_error(tmp_path):
+    args = [*_unreported_sample(tmp_path), "--summary", str(tmp_path / "missing" / "s.md")]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2
+    assert "cannot write the summary to" in result.output
+
+
+def test_check_summary_appends_markdown(tmp_path):
+    args = _unreported_sample(tmp_path)
+    summary = tmp_path / "summary.md"
+    summary.write_text("earlier step\n")
+    result = runner.invoke(app, [*args, "--format", "json", "--summary", str(summary)])
+    assert result.exit_code == 0
+    text = summary.read_text()
+    assert text.startswith("earlier step\n## roschema\n")
+    assert "**No breaking changes found.**" in text
 
 
 def test_check_empty_baseline_is_an_error(tmp_path):
@@ -101,7 +193,7 @@ def test_check_empty_baseline_is_an_error(tmp_path):
 
     allowed = runner.invoke(app, ["check", str(repo), "--against", "HEAD", "--allow-empty"])
     assert allowed.exit_code == 0
-    assert "compared 0 interface(s) in 1 package(s); 1 only in the target" in allowed.stdout
+    assert "compared 0 interface(s) in 1 package(s); 1 new (my_msgs/msg/Pose)" in allowed.stdout
 
 
 def test_check_exit_zero_flag(tmp_path):
