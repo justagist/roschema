@@ -3,6 +3,12 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- JSON findings link to their rule's documentation (`help_uri`).
+
 ## [0.3.0] - 2026-11-03
 
 ### Added

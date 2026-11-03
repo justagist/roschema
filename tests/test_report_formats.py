@@ -43,6 +43,7 @@ def test_build_json_schema():
         "old",
         "new",
         "suppressed",
+        "help_uri",
     }
     assert set(doc["summary"]) == {"total", "errors", "warnings", "suppressed", "advisories"}
 

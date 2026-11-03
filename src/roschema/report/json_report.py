@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..rules import Finding
+from ..rules.gendocs import docs_url
 from .summary import Coverage, summarize
 
 SCHEMA_VERSION = 1
@@ -54,6 +55,7 @@ def _finding_dict(finding: Finding) -> dict[str, object]:
         "old": _loc(finding.old_file, finding.old_line),
         "new": _loc(finding.new_file, finding.new_line),
         "suppressed": finding.suppressed,
+        "help_uri": docs_url(finding.rule),
     }
 
 

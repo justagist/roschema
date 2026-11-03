@@ -333,7 +333,8 @@ workflow commands, which GitHub shows as annotations on the PR diff.
       "message": "type changed float32 -> float64",
       "old": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
       "new": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
-      "suppressed": false
+      "suppressed": false,
+      "help_uri": "https://github.com/justagist/roschema/blob/v0.3.0/docs/rules.md#rs003----field-type-changed"
     }
   ],
   "summary": {
@@ -354,7 +355,9 @@ workflow commands, which GitHub shows as annotations on the PR diff.
 
 `old`/`new` are `null` when there is no corresponding side (a removed interface
 has no `new`). `coverage` counts interfaces present on both sides (`compared`)
-and on one side only. `lint` output has no `advisories` or `coverage`.
+and on one side only. `help_uri` links to the rule's section of the
+[rule reference](docs/rules.md) for the installed release. `lint` output has no
+`advisories` or `coverage`.
 
 ## Exit codes
 
