@@ -1,0 +1,22 @@
+- id: roschema-check
+  name: roschema check
+  description: Check staged interface changes against the last commit.
+  entry: roschema check
+  args: [--against, HEAD]
+  language: python
+  files: \.(msg|srv|action)$
+  pass_filenames: false
+- id: roschema-lint
+  name: roschema lint
+  description: Lint ROS 2 interface definitions.
+  entry: roschema lint
+  language: python
+  files: \.(msg|srv|action)$
+  pass_filenames: false
+- id: roschema-fmt
+  name: roschema fmt
+  description: Format ROS 2 interface definitions in place.
+  entry: roschema fmt
+  language: python
+  files: \.(msg|srv|action)$
+  pass_filenames: false

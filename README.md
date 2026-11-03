@@ -454,6 +454,25 @@ rules can change results without any change on your side. Set `version` to pin
 a release instead. A lockfile or directory baseline needs no `fetch-depth: 0`,
 because it is part of the checkout.
 
+## pre-commit
+
+roschema ships [pre-commit](https://pre-commit.com/) hooks. Each runs on the
+whole repository when an interface file is staged:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/justagist/roschema
+    rev: v0.5.0
+    hooks:
+      - id: roschema-check   # staged changes against the last commit
+      - id: roschema-lint
+      - id: roschema-fmt     # rewrites files; re-stage them and commit again
+```
+
+`args` replaces a hook's arguments, e.g. `args: [--against, HEAD, --level, wire]`
+for `roschema-check` (keep `--against`).
+
 ## Troubleshooting
 
 **"no breaking changes found", but you expected some.** The line under the
