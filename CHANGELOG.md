@@ -3,6 +3,13 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-03
+
+### Fixed
+
+- Respect `COLCON_IGNORE` and `AMENT_IGNORE` during package discovery to avoid
+  reading generated build and install trees, including dangling package symlinks.
+
 ## [0.1.1] - 2026-07-25
 
 Packaging and documentation release; no behavioural changes to the CLI.

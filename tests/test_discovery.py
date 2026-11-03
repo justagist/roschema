@@ -27,6 +27,37 @@ def test_discover_finds_interface_packages(tmp_path):
     assert a.interfaces[0].key == "pkg_a/msg/Foo"
 
 
+@pytest.mark.parametrize("marker", ["COLCON_IGNORE", "AMENT_IGNORE"])
+@pytest.mark.parametrize("root", [".", "build", "build/nested"])
+def test_discover_skips_ignored_trees(tmp_path, marker, root):
+    write_package(tmp_path / "src", "pkg_a", msgs={"Foo": "int32 a\n"})
+    build = tmp_path / "build"
+    write_package(build / "nested", "generated", msgs={"Foo": "int32 a\n"})
+    (build / marker).touch()
+    broken = build / "nested" / "broken"
+    broken.mkdir()
+    (broken / "package.xml").symlink_to(tmp_path / "missing.xml")
+
+    pkgs = discover(RealFS(tmp_path), root)
+    assert [p.name for p in pkgs] == (["pkg_a"] if root == "." else [])
+
+
+def test_discover_skips_ignored_vfs_root(tmp_path):
+    write_package(tmp_path, "pkg_a", msgs={"Foo": "int32 a\n"})
+    (tmp_path / "COLCON_IGNORE").touch()
+    assert discover(RealFS(tmp_path)) == ()
+
+
+def test_discover_skips_ignored_git_tree(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "pkg_a", msgs={"Foo": "int32 a\n"})
+    write_package(repo / "ignored", "pkg_b", msgs={"Foo": "int32 a\n"})
+    (repo / "ignored" / "COLCON_IGNORE").touch()
+    git_commit_all(repo, "init")
+
+    assert [p.name for p in discover(GitTreeFS(repo, "HEAD"))] == ["pkg_a"]
+
+
 def test_discover_uses_package_xml_name_over_dir(tmp_path):
     write_package(tmp_path, "real_name", msgs={"Foo": "int32 a\n"}, dirname="other_dir")
     (pkg,) = discover(RealFS(tmp_path), ".")

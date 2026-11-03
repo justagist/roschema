@@ -17,7 +17,8 @@ def discover(vfs: VFS, root: str = ".") -> tuple[DiscoveredPackage, ...]:
 
     Only packages that actually contain ``msg``/``srv``/``action`` definitions
     are returned. Package names come from ``package.xml`` (``<name>``), falling
-    back to the directory name.
+    back to the directory name. Trees marked with ``COLCON_IGNORE`` or
+    ``AMENT_IGNORE`` are skipped before reading package manifests.
 
     Args:
         vfs: Backend to read through.
@@ -30,12 +31,27 @@ def discover(vfs: VFS, root: str = ".") -> tuple[DiscoveredPackage, ...]:
     packages: list[DiscoveredPackage] = []
     for pkg_xml in vfs.glob(prefix + "**/package.xml"):
         pkg_dir = posixpath.dirname(pkg_xml)
+        if _is_ignored(vfs, pkg_dir):
+            continue
         name = _package_name(vfs, pkg_xml, pkg_dir)
         interfaces = _collect_interfaces(vfs, name, pkg_dir)
         if interfaces:
             packages.append(DiscoveredPackage(name=name, path=pkg_dir, interfaces=interfaces))
     packages.sort(key=lambda p: p.name)
     return tuple(packages)
+
+
+def _is_ignored(vfs: VFS, directory: str) -> bool:
+    """Check for discovery ignore markers up to the VFS root."""
+    while True:
+        if any(
+            vfs.exists(posixpath.join(directory, marker))
+            for marker in ("COLCON_IGNORE", "AMENT_IGNORE")
+        ):
+            return True
+        if not directory:
+            return False
+        directory = posixpath.dirname(directory)
 
 
 def discover_named(

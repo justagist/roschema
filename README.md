@@ -88,7 +88,9 @@ roschema check [TARGET] --against REF [--level LEVEL] [--format text|json|github
 ```
 
 `TARGET` is a path, a package name, or a glob (`'src/**'`) that expands to every
-package underneath; omit it for the current workspace.
+package underneath; omit it for the current workspace. Discovery skips trees
+marked with `COLCON_IGNORE` or `AMENT_IGNORE`, including standard colcon build
+and install directories.
 
 `--against` accepts a git ref (validated with `git rev-parse`), a directory, an
 MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is auto-detected. A
