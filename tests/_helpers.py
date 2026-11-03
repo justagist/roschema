@@ -44,7 +44,7 @@ def write_package(
         d = pkg_dir / kind
         d.mkdir(exist_ok=True)
         for iface_name, body in entries.items():
-            (d / f"{iface_name}.{kind}").write_text(body)
+            (d / f"{iface_name}.{kind}").write_text(body, encoding="utf-8")
     return pkg_dir
 
 
