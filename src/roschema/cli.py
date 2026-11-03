@@ -6,6 +6,7 @@ import json
 import os
 import posixpath
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -23,6 +24,7 @@ from .config import (
 from .deep import transitive_findings
 from .differ import diff_interfaces
 from .discovery import (
+    DiscoveredPackage,
     Resolution,
     apply_exclude,
     resolve_ament,
@@ -47,6 +49,10 @@ app = typer.Typer(
 )
 console = Console()
 err_console = Console(stderr=True)
+
+# A bag check asks whether current code can still decode the recording, which is
+# a wire question; constant and other source-level changes do not affect it.
+BAG_DEFAULT_LEVEL = "wire"
 
 
 def _version_callback(value: bool) -> None:
@@ -145,6 +151,17 @@ def bag_check(
     fmt: Annotated[
         str, typer.Option("--format", help="Output format: text, json or github.")
     ] = "text",
+    level: Annotated[
+        str | None,
+        typer.Option(
+            "--level",
+            help="Reporting level: wire (default for bags), source, introspection, behavior.",
+        ),
+    ] = None,
+    config_path: Annotated[
+        Path | None,
+        typer.Option("--config", help="Explicit config file (roschema.toml or pyproject.toml)."),
+    ] = None,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
@@ -163,6 +180,9 @@ def bag_check(
     if fmt not in ("text", "json", "github"):
         err_console.print(f"[red]error:[/red] unknown format {fmt!r}")
         raise typer.Exit(code=2)
+    if level is not None and level not in LEVEL_BUNDLES:
+        err_console.print(f"[red]error:[/red] unknown level {level!r}")
+        raise typer.Exit(code=2)
     if not bag.endswith(".mcap"):
         err_console.print(f"[red]error:[/red] expected a .mcap bag, got {bag!r}")
         raise typer.Exit(code=2)
@@ -172,14 +192,16 @@ def bag_check(
         old_res = resolve_bag(bag)
         _note_skipped_schemas(old_res)
         old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
-        new_ifaces, new_source = _resolve_current(old_ifaces, targets or [], excludes)
-        config = load_config(Path.cwd(), (), None)
+        new_ifaces, new_source, target_packages = _resolve_current(
+            old_ifaces, targets or [], excludes
+        )
+        config = load_config(Path.cwd(), target_packages, config_path)
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
     findings = finalize_findings(
-        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, None
+        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level, BAG_DEFAULT_LEVEL
     )
     _emit(findings, fmt, new_source, old_res.source)
     _exit_for(findings, exit_zero)
@@ -187,13 +209,16 @@ def bag_check(
 
 def _resolve_current(
     bag_ifaces: dict[str, InterfaceFile], targets: list[str], excludes: list[str]
-) -> tuple[dict[str, InterfaceFile], str]:
+) -> tuple[dict[str, InterfaceFile], str, tuple[DiscoveredPackage, ...]]:
     """Build the current-side interfaces for a bag check.
 
     Starts from the ament index (for the packages the bag references), then
-    overlays any explicit targets so they take precedence.
+    overlays any explicit targets so they take precedence. Also returns the
+    target packages with paths relative to the working directory, so their
+    package configuration can be loaded.
     """
     current: dict[str, InterfaceFile] = {}
+    target_packages: list[DiscoveredPackage] = []
     for package in sorted({key.split("/", 1)[0] for key in bag_ifaces}):
         res = resolve_ament(package)
         if res is not None:
@@ -203,8 +228,13 @@ def _resolve_current(
         replaced = {pkg.name for pkg in res.packages}
         current = {key: iface for key, iface in current.items() if iface.package not in replaced}
         current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
+        if isinstance(res.vfs, RealFS):
+            target_packages += [
+                replace(pkg, path=os.path.relpath(res.vfs.root / pkg.path, Path.cwd()))
+                for pkg in res.packages
+            ]
     source = "targets+environment" if targets else "environment (ament index)"
-    return current, source
+    return current, source, tuple(target_packages)
 
 
 def _resolve_target(

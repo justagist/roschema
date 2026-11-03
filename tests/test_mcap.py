@@ -369,6 +369,37 @@ def test_bag_check_accepts_field_less_messages(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
 
 
+def test_bag_check_defaults_to_wire_level(tmp_path, monkeypatch):
+    """Constant changes do not stop current code decoding a recording."""
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo_msgs", msgs={"Mode": "int32 x\n"})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    monkeypatch.chdir(tmp_path)
+    bag = tmp_path / "constants.mcap"
+    _write_bag(bag, {"demo_msgs/msg/Mode": "int32 IDLE=0\nint32 x\n"})
+
+    default = runner.invoke(app, ["bag-check", str(bag)])
+    assert default.exit_code == 0, default.output
+    assert "RS020" not in default.stdout
+    source = runner.invoke(app, ["bag-check", str(bag), "--level", "source"])
+    assert source.exit_code == 1
+    assert "RS020" in source.stdout
+    (tmp_path / "roschema.toml").write_text('[check]\nlevel = "source"\n')
+    configured = runner.invoke(app, ["bag-check", str(bag)])
+    assert configured.exit_code == 1
+
+
+def test_bag_check_applies_target_package_config(tmp_path, monkeypatch):
+    write_package(tmp_path / "src", "demo", msgs={"T": "float64 x\n"})
+    (tmp_path / "src" / "demo" / "roschema.toml").write_text('[check.rules]\nRS003 = "off"\n')
+    monkeypatch.chdir(tmp_path)
+    bag = tmp_path / "target-config.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), "src/demo", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["findings"] == []
+
+
 def test_mcap_without_schemas_is_a_tool_error(tmp_path):
     bag = tmp_path / "empty.mcap"
     _write_bag(bag, {})

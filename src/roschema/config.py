@@ -74,8 +74,10 @@ class Config:
             return self.workspace.rules[rule_id]
         return default
 
-    def effective_level(self, package: str, cli_level: str | None) -> str:
-        """Reporting level: CLI > package > workspace > default."""
+    def effective_level(
+        self, package: str, cli_level: str | None, default: str = DEFAULT_LEVEL
+    ) -> str:
+        """Reporting level: CLI > package > workspace > the command's default."""
         if cli_level:
             return cli_level
         pkg_cfg = self.packages.get(package)
@@ -83,7 +85,7 @@ class Config:
             return pkg_cfg.level
         if self.workspace.level:
             return self.workspace.level
-        return DEFAULT_LEVEL
+        return default
 
     def effective_deep(self, package: str, cli_deep: bool | None) -> bool:
         """Deep checking: CLI > package > workspace > off."""
@@ -109,13 +111,17 @@ class Config:
 
 
 def finalize_findings(
-    findings: list[Finding], config: Config, cli_level: str | None
+    findings: list[Finding],
+    config: Config,
+    cli_level: str | None,
+    default_level: str = DEFAULT_LEVEL,
 ) -> list[Finding]:
     """Apply config to raw findings.
 
     Drops rules turned ``off`` and findings outside the selected level, adjusts
     severities, and flags inline-suppressed / allowlisted findings (kept in the
     list with ``suppressed=True`` so they can still be counted and emitted).
+    ``default_level`` applies when neither the CLI nor config sets a level.
     """
     out: list[Finding] = []
     for finding in findings:
@@ -128,7 +134,7 @@ def finalize_findings(
         # An opt-in rule (off by default, like RS060) is reported once enabled
         # whatever the level; every other rule stays within the selected level.
         if default != "off":
-            bundle = LEVEL_BUNDLES[config.effective_level(pkg, cli_level)]
+            bundle = LEVEL_BUNDLES[config.effective_level(pkg, cli_level, default_level)]
             if not (set(finding.levels) & bundle):
                 continue
         if finding.rule in finding.inline_ignores or config.is_allowed(finding):
