@@ -150,6 +150,36 @@ def test_check_glob_scopes_out_unmatched_packages(tmp_path, monkeypatch):
     assert packages == {"a"}  # b is out of the glob scope, not reported as removed
 
 
+def test_check_package_name_uses_workspace_source(tmp_path, monkeypatch):
+    """A package name must compare its source, not an installed copy, with the baseline."""
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "my_msgs", msgs={"P": "float32 x\n"})
+    git_commit_all(repo, "v1")
+    install = repo / "install"
+    write_package(install / "share", "my_msgs", msgs={"P": "float32 x\n"})
+    (install / "COLCON_IGNORE").touch()
+    (repo / "src" / "my_msgs" / "msg" / "P.msg").write_text("float64 x\n")
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(install))
+    monkeypatch.chdir(repo)
+
+    result = runner.invoke(app, ["check", "my_msgs", "--against", "HEAD"])
+    assert result.exit_code == 1
+    assert "RS003" in result.output
+    assert "installed copy" not in result.output
+
+
+def test_check_package_name_from_ament_warns(tmp_path, monkeypatch):
+    install = tmp_path / "install"
+    write_package(install / "share", "my_msgs", msgs={"P": "float32 x\n"})
+    (tmp_path / "elsewhere").mkdir()
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(install))
+    monkeypatch.chdir(tmp_path / "elsewhere")
+
+    result = runner.invoke(app, ["ls", "my_msgs"])
+    assert result.exit_code == 0
+    assert "warning: 'my_msgs' is not a source package" in result.output
+
+
 def test_baseline_git_ref_shadows_dir_with_note(tmp_path, monkeypatch):
     repo = make_git_repo(tmp_path / "repo")
     write_package(repo / "pkgs", "m", msgs={"P": "float32 x\n"})

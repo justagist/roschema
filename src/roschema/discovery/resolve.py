@@ -24,7 +24,8 @@ def resolve_target(
 
     1. ``None`` -> treat the current working directory as a workspace root.
     2. An existing directory path -> discover packages beneath it.
-    3. A bare package name -> resolve via the ament index (``AMENT_PREFIX_PATH``).
+    3. A bare package name -> its source package under the working directory,
+       else the installed copy from the ament index (``AMENT_PREFIX_PATH``).
 
     Args:
         target: Path, package name, or ``None``.
@@ -36,7 +37,8 @@ def resolve_target(
         A :class:`Resolution` bundling the backend, packages and a source label.
 
     Raises:
-        VfsError: If a named target cannot be resolved (exit code 2 at the CLI).
+        VfsError: If a named target cannot be resolved or is ambiguous (exit
+            code 2 at the CLI).
     """
     base = Path(cwd) if cwd is not None else Path.cwd()
 
@@ -62,6 +64,10 @@ def resolve_target(
             source=f"path:{path}",
         )
 
+    source = _resolve_source_package(base, target, include_empty=include_empty)
+    if source is not None:
+        return source
+
     ament = resolve_ament(target)
     if ament is not None:
         return ament
@@ -69,6 +75,25 @@ def resolve_target(
     raise VfsError(
         f"cannot resolve target {target!r}: not a directory and not found on "
         f"AMENT_PREFIX_PATH"
+    )
+
+
+def _resolve_source_package(
+    base: Path, name: str, *, include_empty: bool = False
+) -> Resolution | None:
+    """Resolve a package by ``<name>`` among the sources under ``base``, or ``None``."""
+    matches = [p for p in discover(RealFS(base), ".", include_empty=True) if p.name == name]
+    if not matches:
+        return None
+    if len(matches) > 1:
+        paths = ", ".join(p.path for p in matches)
+        raise VfsError(f"package {name!r} is defined in several places: {paths}")
+    path = base / matches[0].path
+    vfs = RealFS(path)
+    return Resolution(
+        vfs=vfs,
+        packages=discover(vfs, ".", include_empty=include_empty),
+        source=f"path:{path}",
     )
 
 

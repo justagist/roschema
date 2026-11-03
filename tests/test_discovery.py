@@ -113,10 +113,29 @@ def test_resolve_target_path(tmp_path):
 def test_resolve_target_ament(tmp_path, monkeypatch):
     prefix = tmp_path / "install"
     write_package(prefix / "share", "my_msgs", msgs={"Foo": "int32 a\n"})
+    (prefix / "COLCON_IGNORE").touch()  # as colcon marks its install tree
     monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
     res = resolve_target("my_msgs", cwd=tmp_path)
     assert res.source == f"ament:{prefix}"
     assert res.packages[0].name == "my_msgs"
+
+
+def test_resolve_target_name_prefers_workspace_source(tmp_path, monkeypatch):
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "my_msgs", msgs={"Foo": "int32 a\n"})
+    (prefix / "COLCON_IGNORE").touch()
+    source = write_package(tmp_path / "src", "my_msgs", msgs={"Bar": "int32 b\n"}, dirname="msgs")
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    res = resolve_target("my_msgs", cwd=tmp_path)
+    assert res.source == f"path:{source}"
+    assert [r.name for r in res.packages[0].interfaces] == ["Bar"]
+
+
+def test_resolve_target_name_defined_twice_is_error(tmp_path):
+    write_package(tmp_path / "a", "my_msgs", msgs={"Foo": "int32 a\n"})
+    write_package(tmp_path / "b", "my_msgs", msgs={"Foo": "int32 a\n"})
+    with pytest.raises(VfsError, match="several places"):
+        resolve_target("my_msgs", cwd=tmp_path)
 
 
 def test_resolve_target_unresolvable(tmp_path, monkeypatch):

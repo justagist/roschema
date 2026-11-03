@@ -197,12 +197,27 @@ def _resolve_current(
         if res is not None:
             current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
     for target in targets:
-        res = resolve_target(target, include_empty=True)
+        res = _resolve_target(target, include_empty=True)
         replaced = {pkg.name for pkg in res.packages}
         current = {key: iface for key, iface in current.items() if iface.package not in replaced}
         current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
     source = "targets+environment" if targets else "environment (ament index)"
     return current, source
+
+
+def _resolve_target(
+    target: str | None, *, allow_empty_glob: bool = False, include_empty: bool = False
+) -> Resolution:
+    """Resolve a CLI target, warning when a package name resolves to an installed copy."""
+    res = resolve_target(
+        target, allow_empty_glob=allow_empty_glob, include_empty=include_empty
+    )
+    if res.source.startswith("ament:"):
+        err_console.print(
+            f"[yellow]warning:[/yellow] {target!r} is not a source package under the "
+            f"working directory; using the installed copy from {res.source[len('ament:'):]}"
+        )
+    return res
 
 
 def _compute(
@@ -214,7 +229,7 @@ def _compute(
     deep: bool | None = None,
 ) -> tuple[list[Finding], str, str, str]:
     """Resolve both sides, diff and finalize; the shared check pipeline."""
-    new_res = resolve_target(target, allow_empty_glob=True)
+    new_res = _resolve_target(target, allow_empty_glob=True)
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
     old_res = resolve_old(new_res.vfs.root)
@@ -317,7 +332,7 @@ def lint(
 
     try:
         overrides = _parse_rule_overrides(rules or [])
-        res = resolve_target(target)
+        res = _resolve_target(target)
         if not isinstance(res.vfs, RealFS):
             raise VfsError("lint target must be a directory or workspace")
         config = load_config(res.vfs.root, res.packages, config_path)
@@ -373,7 +388,7 @@ def fmt(
 ) -> None:
     """Canonically format interface files (idempotent, comment-preserving)."""
     try:
-        res = resolve_target(target)
+        res = _resolve_target(target)
         if not isinstance(res.vfs, RealFS):
             raise VfsError("fmt target must be a directory or workspace")
         packages = apply_exclude(res.packages, exclude or [])
@@ -419,7 +434,7 @@ def freeze(
 ) -> None:
     """Write a roschema.lock baseline (canonical text + sha256 per interface)."""
     try:
-        res = resolve_target(target)
+        res = _resolve_target(target)
         interfaces = load_interfaces(res.vfs, apply_exclude(res.packages, exclude or []))
     except (VfsError, ParseError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
@@ -443,7 +458,7 @@ def ls(
 ) -> None:
     """List discovered interface packages and the source they came from."""
     try:
-        resolution = resolve_target(target)
+        resolution = _resolve_target(target)
     except VfsError as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
