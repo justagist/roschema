@@ -238,3 +238,17 @@ def test_glob_reports_deletion_in_directory_baseline(tmp_path, monkeypatch):
     assert result.exit_code == 1
     assert "gone/msg/T" in result.stdout
     assert "other/msg/T" not in result.stdout
+
+
+def test_direct_package_check_inherits_workspace_config(tmp_path, monkeypatch):
+    repo = make_git_repo(tmp_path / "repo")
+    pkg = write_package(repo / "src", "demo", msgs={"T": "int32 x\n"})
+    (repo / "roschema.toml").write_text('[check.rules]\nRS003 = "warn"\n')
+    git_commit_all(repo, "baseline")
+    (pkg / "msg" / "T.msg").write_text("float64 x\n")
+    monkeypatch.chdir(repo)
+    for target in [str(repo), str(pkg)]:
+        result = runner.invoke(app, ["check", target, "--against", "HEAD", "--format", "json"])
+        assert result.exit_code == 0
+        findings = json.loads(result.stdout)["findings"]
+        assert [(f["rule"], f["severity"]) for f in findings] == [("RS003", "warn")]

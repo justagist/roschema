@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from _helpers import write_package
+from _helpers import make_git_repo, write_package
 from roschema.config import (
     AllowEntry,
     Config,
     ConfigError,
     ScopeConfig,
     finalize_findings,
+    finalize_lint,
     load_config,
 )
 from roschema.discovery import discover
@@ -147,3 +148,41 @@ def test_rs060_opt_in():
     cfg = Config(workspace=ScopeConfig(rules={"RS060": "error"}))
     out = finalize_findings([off], cfg, None)
     assert len(out) == 1 and out[0].severity == "error"
+
+
+@pytest.mark.parametrize("package_format", ["roschema.toml", "pyproject.toml"])
+def test_package_target_inherits_workspace_and_keeps_overrides(tmp_path, package_format):
+    (tmp_path / "roschema.toml").write_text(
+        '[check.rules]\nRS001 = "warn"\nRS003 = "off"\n'
+        '[lint.rules]\nRSL001 = "warn"\nRSL004 = "error"\n'
+    )
+    pkg = write_package(tmp_path / "src", "demo", msgs={"T": "int32 x\n"})
+    prefix = "tool.roschema." if package_format == "pyproject.toml" else ""
+    (pkg / package_format).write_text(
+        f'[{prefix}check.rules]\nRS003 = "warn"\n'
+        f'[{prefix}lint.rules]\nRSL001 = "off"\n'
+    )
+    for root in (tmp_path, pkg):
+        cfg = load_config(root, _pkgs(root))
+        assert cfg.effective_severity("RS001", "demo", "error") == "warn"
+        assert cfg.effective_severity("RS003", "demo", "error") == "warn"
+        lint = finalize_lint([_finding("RSL001"), _finding("RSL004")], cfg)
+        assert [(f.rule, f.severity) for f in lint] == [("RSL004", "error")]
+
+
+def test_config_search_stops_at_git_root(tmp_path):
+    (tmp_path / "roschema.toml").write_text('[check.rules]\nRS003 = "off"\n')
+    repo = make_git_repo(tmp_path / "repo")
+    pkg = write_package(repo / "src", "demo", msgs={"T": "int32 x\n"})
+    cfg = load_config(pkg, _pkgs(pkg))
+    assert cfg.effective_severity("RS003", "demo", "error") == "error"
+
+
+def test_explicit_workspace_config_still_allows_package_overrides(tmp_path):
+    pkg = write_package(tmp_path, "demo", msgs={"T": "int32 x\n"})
+    explicit = tmp_path / "ci.toml"
+    explicit.write_text('[check.rules]\nRS001 = "warn"\nRS003 = "off"\n')
+    (pkg / "roschema.toml").write_text('[check.rules]\nRS003 = "warn"\n')
+    cfg = load_config(pkg, _pkgs(pkg), explicit)
+    assert cfg.effective_severity("RS001", "demo", "error") == "warn"
+    assert cfg.effective_severity("RS003", "demo", "error") == "warn"

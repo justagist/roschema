@@ -195,7 +195,10 @@ definitions that differ only in formatting or comments are accepted.
 
 `roschema.toml` at the workspace root, a per-package `roschema.toml`, or
 `[tool.roschema]` in `pyproject.toml`. Precedence: CLI > package > workspace >
-defaults.
+defaults. Workspace discovery searches upwards to the Git repository root, or
+the filesystem root outside Git. Package configurations override inherited
+workspace values even when checking the package directly by path. At each
+directory, `roschema.toml` takes precedence over `[tool.roschema]`.
 
 ```toml
 [check]

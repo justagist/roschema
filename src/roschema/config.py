@@ -13,6 +13,7 @@ from typing import cast
 
 from .discovery import DiscoveredPackage
 from .rules import Finding
+from .vfs import git_toplevel
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -180,17 +181,14 @@ def load_config(
     Raises:
         ConfigError: On malformed config or an allow entry missing a reason.
     """
+    root = root.resolve()
     workspace_scope, lint_rules = _load_workspace(root, config_path)
     package_configs: dict[str, ScopeConfig] = {}
     package_lint_rules: dict[str, dict[str, str]] = {}
     for pkg in packages:
-        if not pkg.path:
-            continue
-        pkg_toml = root / pkg.path / "roschema.toml"
-        if pkg_toml.is_file():
-            package_configs[pkg.name], package_lint_rules[pkg.name] = _parse_loaded(
-                _read_toml(pkg_toml)
-            )
+        loaded = _load_directory_config(root / pkg.path)
+        if loaded is not None:
+            package_configs[pkg.name], package_lint_rules[pkg.name] = loaded
     return Config(
         workspace=workspace_scope, packages=package_configs, lint_rules=lint_rules,
         package_lint_rules=package_lint_rules,
@@ -208,17 +206,29 @@ def _load_workspace(
             data = _as_dict(_as_dict(data.get("tool")).get("roschema"))
         return _parse_loaded(data)
 
-    roschema_toml = root / "roschema.toml"
+    boundary = git_toplevel(root)
+    package_root = (root / "package.xml").is_file()
+    for directory in (root, *root.parents):
+        if directory != root or not package_root:
+            loaded = _load_directory_config(directory)
+            if loaded is not None:
+                return loaded
+        if directory == boundary:
+            break
+    return ScopeConfig(), {}
+
+
+def _load_directory_config(directory: Path) -> tuple[ScopeConfig, dict[str, str]] | None:
+    """Read a directory's roschema config, preferring roschema.toml."""
+    roschema_toml = directory / "roschema.toml"
     if roschema_toml.is_file():
         return _parse_loaded(_read_toml(roschema_toml))
-
-    pyproject = root / "pyproject.toml"
+    pyproject = directory / "pyproject.toml"
     if pyproject.is_file():
         data = _as_dict(_as_dict(_read_toml(pyproject).get("tool")).get("roschema"))
         if data:
             return _parse_loaded(data)
-
-    return ScopeConfig(), {}
+    return None
 
 
 def _read_toml(path: Path) -> dict[str, object]:
