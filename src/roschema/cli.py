@@ -391,7 +391,7 @@ def lint(
 
     findings = finalize_lint(lint_interfaces(interfaces), config, overrides)
     if fmt == "json":
-        typer.echo(json.dumps(build_json(findings), indent=2))
+        typer.echo(json.dumps(build_json(findings, advisories=False), indent=2))
     elif fmt == "github":
         for line in build_github(findings, _display_prefix(res.vfs.root)):
             typer.echo(line)

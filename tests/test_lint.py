@@ -146,6 +146,18 @@ def test_package_lint_precedence(tmp_path, package_severity, options, expected):
     assert {f["package"]: f["severity"] for f in findings} == expected
 
 
+def test_lint_json_has_no_semver_advice(tmp_path):
+    write_package(tmp_path, "demo", msgs={"T": "int32 BadField\n"})
+    result = runner.invoke(app, ["lint", str(tmp_path), "--format", "json"])
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["summary"] == {
+        "total": 1,
+        "errors": 1,
+        "warnings": 0,
+        "suppressed": 0,
+    }
+
+
 @pytest.mark.parametrize(
     "field_type,unbounded",
     [
