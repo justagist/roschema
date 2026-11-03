@@ -14,6 +14,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Python 3.14 is supported and tested.
 - An empty baseline is an error (exit `2`) instead of a silent pass; pass
   `--allow-empty` (Action: `allow-empty`) when that is expected.
 
