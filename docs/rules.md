@@ -239,7 +239,7 @@ int32 b
 
 ### RS110 -- Transitively broken by an embedded type
 
-An interface embeds (directly or through nested types) another interface whose wire layout changed, so it is broken even though its own definition did not change. Reported only with --deep.
+An interface embeds (directly or through nested types) another interface whose wire layout changed, so it is broken even though its own definition did not change. Reported only with --deep, with the severity of the reported change it traces back to; suppressed changes are not followed.
 
 - Levels: wire
 - Default severity: error

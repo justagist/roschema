@@ -22,14 +22,23 @@ def transitive_findings(
 ) -> list[Finding]:
     """Return RS110 findings for interfaces broken via a changed embedded type.
 
+    Each RS110 finding takes the severity of the root it traces back to, so a
+    warning-level change never fails the interfaces that embed it.
+
     Args:
         new_ifaces: Current interfaces (the target set).
-        direct: Findings from the ordinary diff; interfaces with a wire-level
-            finding are the roots of transitive breakage.
+        direct: Finalised findings from the ordinary diff; interfaces with a
+            reported (unsuppressed) wire-level finding are the roots of
+            transitive breakage.
     """
-    changed = {f.interface for f in direct if "wire" in f.levels}
-    if not changed:
+    roots = [f for f in direct if "wire" in f.levels and not f.suppressed]
+    if not roots:
         return []
+    # Search error roots first so an interface reaching both reports the error.
+    tiers = [
+        (severity, {f.interface for f in roots if f.severity == severity})
+        for severity in ("error", "warn")
+    ]
 
     graph = dict(new_ifaces)
     _augment_dependencies(graph)
@@ -37,14 +46,19 @@ def transitive_findings(
 
     findings: list[Finding] = []
     for key in sorted(new_ifaces):
-        chain = _first_changed_dependency(key, edges, changed)
-        if chain is None:
+        traced = [
+            (severity, chain)
+            for severity, changed in tiers
+            if (chain := _first_changed_dependency(key, edges, changed)) is not None
+        ]
+        if not traced:
             continue
+        severity, chain = traced[0]
         iface = new_ifaces[key]
         findings.append(
             Finding(
                 rule=RS110.id,
-                severity=RS110.default_severity.value,
+                severity=severity,
                 level=RS110.primary_level,
                 interface=key,
                 section=None,

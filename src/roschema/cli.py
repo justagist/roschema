@@ -240,11 +240,13 @@ def _compute(
             raise VfsError(f"target glob {target!r} matched no interface packages on either side")
         old_packages = tuple(p for p in old_packages if p.name in scope)
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
-    raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
+    findings = finalize_findings(evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level)
     deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
     if deep_packages:
-        raw = raw + [f for f in transitive_findings(new_ifaces, raw) if f.package in deep_packages]
-    findings = finalize_findings(raw, config, level)
+        transitive = transitive_findings(new_ifaces, findings)
+        findings += finalize_findings(
+            [f for f in transitive if f.package in deep_packages], config, level
+        )
     return findings, new_res.source, old_res.source, prefix
 
 
