@@ -3,6 +3,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-11-03
+
+### Added
+
+- `--version` / `-v` to display the installed package version.
+
+### Fixed
+
+- Pass GitHub Action inputs as literal arguments to prevent shell injection.
+- Report tightened bounds even when another bound on the same field increases.
+- Include deleted packages when checking glob targets against Git or directory
+  baselines; reject path globs for lockfile and MCAP baselines.
+- Reject unsupported, conflicting or unusable MCAP schemas instead of silently
+  checking incomplete definitions, while preserving supported IDL string constants.
+- Replace each installed package's full interface set with its source target in
+  `bag-check`, so deleted source interfaces are reported as removed.
+- Honour workspace and package deep-check settings, with `--deep` / `--no-deep`
+  taking precedence.
+- Inherit enclosing workspace configuration when targeting a package directly,
+  and apply package lint overrides from `roschema.toml` or `pyproject.toml`.
+- Reject unknown or misplaced rule identifiers and invalid configuration values.
+- Detect unbounded string elements inside arrays and sequences with RSL006.
+
 ## [0.1.2] - 2026-11-03
 
 ### Fixed
