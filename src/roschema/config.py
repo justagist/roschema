@@ -89,6 +89,15 @@ class Config:
             return self.workspace.level
         return DEFAULT_LEVEL
 
+    def effective_deep(self, package: str, cli_deep: bool | None) -> bool:
+        """Deep checking: CLI > package > workspace > off."""
+        if cli_deep is not None:
+            return cli_deep
+        pkg_cfg = self.packages.get(package)
+        if pkg_cfg is not None and pkg_cfg.deep is not None:
+            return pkg_cfg.deep
+        return self.workspace.deep or False
+
     def is_allowed(self, finding: Finding) -> bool:
         """Whether an allowlist entry covers this finding."""
         entries = list(self.workspace.allow)

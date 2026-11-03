@@ -200,6 +200,7 @@ defaults.
 ```toml
 [check]
 level = "source"
+deep = false          # --deep / --no-deep overrides this
 
 [check.rules]
 RS008 = "off"          # off | warn | error

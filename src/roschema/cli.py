@@ -94,9 +94,11 @@ def check(
         typer.Option("--config", help="Explicit config file (roschema.toml or pyproject.toml)."),
     ] = None,
     deep: Annotated[
-        bool,
-        typer.Option("--deep", help="Resolve nested types and flag transitive breakage (RS110)."),
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--deep/--no-deep", help="Resolve nested types and flag transitive breakage (RS110)."
+        ),
+    ] = None,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
@@ -210,7 +212,7 @@ def _compute(
     level: str | None,
     config_path: Path | None,
     exclude: list[str] | None,
-    deep: bool = False,
+    deep: bool | None = None,
 ) -> tuple[list[Finding], str, str, str]:
     """Resolve both sides, diff and finalize; the shared check pipeline."""
     new_res = resolve_target(target, allow_empty_glob=True)
@@ -242,8 +244,11 @@ def _compute(
         old_packages = tuple(p for p in old_packages if p.name in scope)
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
     raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
-    if deep:
-        raw = raw + transitive_findings(new_ifaces, raw)
+    deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
+    if deep_packages:
+        raw = raw + [
+            f for f in transitive_findings(new_ifaces, raw) if f.package in deep_packages
+        ]
     findings = finalize_findings(raw, config, level)
     return findings, new_res.source, old_res.source, prefix
 
