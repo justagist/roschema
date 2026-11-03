@@ -318,8 +318,9 @@ allow every rule for that target.
 A target may be a glob, to allow a planned break across a whole interface or
 package without listing every member: `*` matches any run of characters
 (including `/` and `.`), `?` one character and `[abc]` one of a set. For
-example `"my_msgs/msg/State*"` covers `State` itself and all its members, and
-`"vendor_msgs/*"` everything in that package.
+example `"my_msgs/msg/State.*"` covers every member of `State`, and
+`"vendor_msgs/*"` everything in that package. A glob matches every target that
+fits it: `"my_msgs/msg/State*"` covers `StateStamped` too.
 
 `check` warns (RS200) about an allowlist entry or inline check ignore that no
 longer matches any finding, e.g. once the baseline has moved past the break, so

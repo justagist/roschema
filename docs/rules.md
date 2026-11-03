@@ -293,7 +293,8 @@ An allowlist entry or a `# roschema: ignore=` comment for a check rule matches n
 
 ```
 # before
-[check.allow] "my_msgs/msg/S.a" = { reason = "removed in 2.0" }
+[check.allow]
+"my_msgs/msg/S.a" = { reason = "removed in 2.0" }
 # after
 baseline already lacks a, so nothing is removed any more
 ```

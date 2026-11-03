@@ -32,6 +32,6 @@ RULE = Rule(
     default_severity=Severity.WARN,
     handles=(),
     message=_message,
-    example_before='[check.allow] "my_msgs/msg/S.a" = { reason = "removed in 2.0" }',
+    example_before='[check.allow]\n"my_msgs/msg/S.a" = { reason = "removed in 2.0" }',
     example_after="baseline already lacks a, so nothing is removed any more",
 )
