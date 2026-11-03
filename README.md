@@ -369,7 +369,7 @@ jobs:
       - uses: justagist/roschema/action@main
         with:
           against: origin/${{ github.base_ref }}
-          # version: "roschema==0.2.0"   # pin a release for reproducible results
+          # version: "roschema==0.2.1"   # pin a release for reproducible results
           # level: source
           # deep: "true"
           # exclude: "vendor_msgs* legacy_msgs/msg/Old"
