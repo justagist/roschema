@@ -3,6 +3,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- `--format github` attaches findings with no new-side location, such as a
+  removed field or a reorder, to the interface's file instead of leaving GitHub
+  to show them against the workflow file.
+
 ## [0.2.1] - 2026-11-03
 
 ### Added

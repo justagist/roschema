@@ -127,7 +127,7 @@ def check(
         raise typer.Exit(code=2)
 
     try:
-        findings, new_source, old_source, prefix = _compute(
+        findings, new_source, old_source, prefix, files = _compute(
             target, lambda root: resolve_baseline(against, root), level, config_path, exclude, deep
         )
     except (VfsError, ParseError, ConfigError) as exc:
@@ -139,7 +139,7 @@ def check(
             f"[dim]note: {against!r} matched a git ref; "
             f"use './{against}' to compare against the directory instead.[/dim]"
         )
-    _emit(findings, fmt, new_source, old_source, prefix)
+    _emit(findings, fmt, new_source, old_source, prefix, files)
     _exit_for(findings, exit_zero)
 
 
@@ -263,8 +263,11 @@ def _compute(
     config_path: Path | None,
     exclude: list[str] | None,
     deep: bool | None = None,
-) -> tuple[list[Finding], str, str, str]:
-    """Resolve both sides, diff and finalize; the shared check pipeline."""
+) -> tuple[list[Finding], str, str, str, dict[str, str]]:
+    """Resolve both sides, diff and finalize; the shared check pipeline.
+
+    Also returns each current interface's source file, keyed by interface.
+    """
     new_res = _resolve_target(target, allow_empty_glob=True)
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
@@ -305,7 +308,8 @@ def _compute(
         findings += finalize_findings(
             [f for f in transitive if f.package in deep_packages], config, level
         )
-    return findings, new_res.source, old_res.source, prefix
+    files = {key: iface.source_file for key, iface in new_ifaces.items()}
+    return findings, new_res.source, old_res.source, prefix, files
 
 
 def _note_skipped_schemas(res: Resolution) -> None:
@@ -339,11 +343,12 @@ def _emit(
     new_source: str,
     old_source: str,
     display_prefix: str = "",
+    interface_files: dict[str, str] | None = None,
 ) -> None:
     if fmt == "json":
         typer.echo(json.dumps(build_json(findings), indent=2))
     elif fmt == "github":
-        for line in build_github(findings, display_prefix):
+        for line in build_github(findings, display_prefix, interface_files):
             typer.echo(line)
     else:
         render_text(findings, console, new_source, old_source)

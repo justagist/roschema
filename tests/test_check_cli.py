@@ -105,6 +105,21 @@ def test_github_no_prefix_at_repo_root(tmp_path):
     assert "file=src/pkg/msg/A.msg" in result.stdout  # VFS-relative already full
 
 
+def test_github_unlocated_findings_use_interface_file(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "pkg", msgs={"A": "int32 a\nint32 b\nint32 c\n"})
+    git_commit_all(repo, "v1")
+    (repo / "src" / "pkg" / "msg" / "A.msg").write_text("int32 b\nint32 a\n")
+
+    result = runner.invoke(
+        app, ["check", str(repo / "src" / "pkg"), "--against", "HEAD", "--format", "github"]
+    )
+    assert result.exit_code == 1
+    lines = {line.split("::")[1].split(",title=")[1]: line for line in result.stdout.splitlines()}
+    assert lines["RS001"].startswith("::error file=src/pkg/msg/A.msg,title=RS001::")
+    assert lines["RS004"].startswith("::error file=src/pkg/msg/A.msg,title=RS004::")
+
+
 def test_json_paths_stay_vfs_relative(tmp_path):
     repo = make_git_repo(tmp_path / "repo")
     write_package(repo / "src", "pkg", msgs={"A": "float32 x\n"})
