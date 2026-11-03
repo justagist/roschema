@@ -3,6 +3,44 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `bag-check --level` and `--config`.
+- Git baselines read initialised submodules at their recorded commit, and warn
+  when that commit is not available locally.
+
+### Changed
+
+- `bag-check` reports at the `wire` level by default, since constant and other
+  source-level changes do not stop current code decoding a recording.
+- Package-name targets resolve to the workspace source package before the
+  installed copy, with a warning when the installed copy is used.
+- Adding or removing a sequence bound (`T[]` <-> `T[<=N]`) is reported as a
+  bound change (RS007/RS008) rather than an array-kind change (RS006).
+- RS110 takes the severity of the change it traces back to and ignores
+  suppressed, allowlisted or disabled changes.
+- Configuring a rule's severity no longer reports it outside the selected
+  level; only rules that are off by default (such as RS060) bypass the level.
+- The GitHub Action passes `--level` only when set, so configured levels apply.
+- RS002 is tagged `wire` only, and RSL005 explains why `char` and scalar `byte`
+  are ambiguous instead of calling them deprecated.
+
+### Fixed
+
+- `bag-check` skips schemas recorded without a definition and compares service
+  event schemas (`SRV:` blocks) instead of failing.
+- A same-package type written with its package (`pkg/Type` inside `pkg`) is no
+  longer reported as a type change.
+- Duplicate field or constant names are parse errors, as in rosidl.
+- Unknown configuration keys are configuration errors, with a suggestion.
+- `lint --format json` no longer includes semver advisories.
+- Text output no longer wraps long lines when not writing to a terminal.
+- Files are read and written as UTF-8 regardless of locale.
+- GitHub annotation text is escaped.
+- `wchar` in MCAP IDL schemas is rejected instead of narrowed to `char`.
+
 ## [0.1.3] - 2026-11-03
 
 ### Added
