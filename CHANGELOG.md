@@ -8,6 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - JSON findings link to their rule's documentation (`help_uri`).
+- `roschema explain RULE` prints a rule's reference section.
 
 ## [0.3.0] - 2026-11-03
 

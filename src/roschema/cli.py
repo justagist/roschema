@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import posixpath
@@ -12,6 +13,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 
 from . import __version__
 from .config import (
@@ -39,7 +41,8 @@ from .loader import load_interfaces
 from .mcap_fs import McapTypeFS
 from .parser import ParseError
 from .report import Coverage, build_github, build_json, coverage, render_lint, render_text
-from .rules import Finding, all_lint_rules, evaluate, lint_interfaces
+from .rules import Finding, all_lint_rules, all_rules, evaluate, lint_interfaces
+from .rules.gendocs import docs_url, find_rule, render_rule
 from .vfs import GitTreeFS, RealFS, VfsError, git_toplevel
 
 app = typer.Typer(
@@ -541,6 +544,22 @@ def freeze(
 
     output.write_text(build_lock(interfaces, __version__), encoding="utf-8")
     console.print(f"wrote {len(interfaces)} interface(s) to {output}")
+
+
+@app.command()
+def explain(
+    rule_id: Annotated[str, typer.Argument(metavar="RULE", help="Rule ID, e.g. RS003.")],
+) -> None:
+    """Describe a rule: what it reports, its levels, rationale and an example."""
+    rule = find_rule(rule_id)
+    if rule is None:
+        ids = [r.id for r in all_rules()] + [r.id for r in all_lint_rules()]
+        close = difflib.get_close_matches(rule_id.upper(), ids, n=1)
+        hint = f"; did you mean {close[0]}?" if close else ""
+        err_console.print(f"[red]error:[/red] unknown rule {rule_id!r}{hint}")
+        raise typer.Exit(code=2)
+    console.print(Markdown(render_rule(rule)))
+    console.print(f"\n{docs_url(rule.id)}")
 
 
 @app.command()

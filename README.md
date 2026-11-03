@@ -113,6 +113,9 @@ roschema bag-check recording.mcap
 
 # what would be checked? (discovered packages and interfaces)
 roschema ls
+
+# what does a rule report, and why?
+roschema explain RS004
 ```
 
 ## Checking
@@ -434,6 +437,7 @@ shown in [Configuration](#configuration); the error suggests the closest one.
 
 Every rule, its levels, default severity, rationale and an example is
 documented in [docs/rules.md](docs/rules.md), generated from the rule metadata.
+`roschema explain RULE` prints the same section in the terminal.
 
 ## Non-goals
 
