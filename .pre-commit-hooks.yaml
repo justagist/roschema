@@ -2,9 +2,11 @@
   name: roschema check
   description: Check staged interface changes against the last commit.
   entry: roschema check
-  args: [--against, HEAD]
+  args: [--against, HEAD, --allow-empty]
   language: python
-  files: \.(msg|srv|action)$
+  # pre-commit does not trigger hooks on deleted files, and removing an
+  # interface is a breaking change.
+  always_run: true
   pass_filenames: false
 - id: roschema-lint
   name: roschema lint

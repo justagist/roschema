@@ -457,7 +457,9 @@ because it is part of the checkout.
 ## pre-commit
 
 roschema ships [pre-commit](https://pre-commit.com/) hooks. Each runs on the
-whole repository when an interface file is staged:
+whole repository: `roschema-check` on every commit, so a commit that only
+deletes an interface is checked too, and the others when an interface file is
+staged.
 
 ```yaml
 # .pre-commit-config.yaml
@@ -470,8 +472,9 @@ repos:
       - id: roschema-fmt     # rewrites files; re-stage them and commit again
 ```
 
-`args` replaces a hook's arguments, e.g. `args: [--against, HEAD, --level, wire]`
-for `roschema-check` (keep `--against`).
+`args` replaces a hook's arguments, e.g.
+`args: [--against, HEAD, --allow-empty, --level, wire]` for `roschema-check`.
+`--allow-empty` lets the commit that adds the first interfaces pass.
 
 ## Troubleshooting
 
