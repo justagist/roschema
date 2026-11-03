@@ -44,7 +44,7 @@ def write_package(
         d = pkg_dir / kind
         d.mkdir(exist_ok=True)
         for iface_name, body in entries.items():
-            (d / f"{iface_name}.{kind}").write_text(body)
+            (d / f"{iface_name}.{kind}").write_text(body, encoding="utf-8")
     return pkg_dir
 
 
@@ -56,10 +56,15 @@ def make_git_repo(root: Path) -> Path:
     """Initialise an empty git repo with a deterministic identity."""
     root.mkdir(parents=True, exist_ok=True)
     _git(root, "init", "-q")
-    _git(root, "config", "user.email", "test@example.com")
-    _git(root, "config", "user.name", "test")
-    _git(root, "config", "commit.gpgsign", "false")
+    set_git_identity(root)
     return root
+
+
+def set_git_identity(repo: Path) -> None:
+    """Give an existing checkout (e.g. a cloned submodule) the test identity."""
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "test")
+    _git(repo, "config", "commit.gpgsign", "false")
 
 
 def git_commit_all(repo: Path, message: str) -> None:

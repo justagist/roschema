@@ -101,9 +101,7 @@ def _load_lock(lock_path: str) -> dict[str, str]:
         except (KeyError, TypeError) as exc:
             raise VfsError(f"malformed lockfile entry in {lock_path}: missing {exc}") from exc
         if hashlib.sha256(text.encode()).hexdigest() != expected:
-            raise VfsError(
-                f"lockfile entry {entry.get('key')!r} failed sha256 verification"
-            )
+            raise VfsError(f"lockfile entry {entry.get('key')!r} failed sha256 verification")
         files[f"{pkg}/{kind}/{name}.{kind}"] = text
         files[f"{pkg}/package.xml"] = _PACKAGE_XML.format(name=pkg)
     return files

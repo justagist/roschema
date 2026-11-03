@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 
 import pytest
 from typer.testing import CliRunner
@@ -99,9 +100,7 @@ def test_github_no_prefix_at_repo_root(tmp_path):
     git_commit_all(repo, "v1")
     (repo / "src" / "pkg" / "msg" / "A.msg").write_text("float64 x\n")
 
-    result = runner.invoke(
-        app, ["check", str(repo), "--against", "HEAD", "--format", "github"]
-    )
+    result = runner.invoke(app, ["check", str(repo), "--against", "HEAD", "--format", "github"])
     assert result.exit_code == 1
     assert "file=src/pkg/msg/A.msg" in result.stdout  # VFS-relative already full
 
@@ -150,6 +149,110 @@ def test_check_glob_scopes_out_unmatched_packages(tmp_path, monkeypatch):
     assert packages == {"a"}  # b is out of the glob scope, not reported as removed
 
 
+def test_check_package_name_uses_workspace_source(tmp_path, monkeypatch):
+    """A package name must compare its source, not an installed copy, with the baseline."""
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "my_msgs", msgs={"P": "float32 x\n"})
+    git_commit_all(repo, "v1")
+    install = repo / "install"
+    write_package(install / "share", "my_msgs", msgs={"P": "float32 x\n"})
+    (install / "COLCON_IGNORE").touch()
+    (repo / "src" / "my_msgs" / "msg" / "P.msg").write_text("float64 x\n")
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(install))
+    monkeypatch.chdir(repo)
+
+    result = runner.invoke(app, ["check", "my_msgs", "--against", "HEAD"])
+    assert result.exit_code == 1
+    assert "RS003" in result.output
+    assert "installed copy" not in result.output
+
+
+def test_check_package_name_from_ament_warns(tmp_path, monkeypatch):
+    install = tmp_path / "install"
+    write_package(install / "share", "my_msgs", msgs={"P": "float32 x\n"})
+    (tmp_path / "elsewhere").mkdir()
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(install))
+    monkeypatch.chdir(tmp_path / "elsewhere")
+
+    result = runner.invoke(app, ["ls", "my_msgs"])
+    assert result.exit_code == 0
+    assert "is not a source package under the working directory; using the installed" in (
+        result.output
+    )
+
+
+def test_check_from_superproject_compares_submodule_packages(tmp_path, monkeypatch):
+    sub = make_git_repo(tmp_path / "sub")
+    write_package(sub, "my_msgs", msgs={"P": "float32 x\n"})
+    git_commit_all(sub, "v1")
+    repo = make_git_repo(tmp_path / "repo")
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            str(sub),
+            "src/vendor",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    git_commit_all(repo, "add submodule")
+    (repo / "src" / "vendor" / "my_msgs" / "msg" / "P.msg").write_text("float64 x\n")
+    monkeypatch.chdir(repo)
+
+    result = runner.invoke(app, ["check", "--against", "HEAD"])
+    assert result.exit_code == 1
+    assert "RS003" in result.output
+
+
+def test_text_output_keeps_long_lines_whole(tmp_path):
+    """Non-terminal output (CI logs) must not split paths across lines."""
+    deep = tmp_path / ("nested_directory_" * 6)
+    write_package(deep / "old", "my_msgs", msgs={"Pose": "float32 theta\n"})
+    write_package(deep / "new", "my_msgs", msgs={"Pose": "float64 theta\n"})
+    result = runner.invoke(app, ["check", str(deep / "new"), "--against", str(deep / "old")])
+    assert f"checking path:{deep / 'new'}  against  path:{deep / 'old'}" in result.stdout
+
+
+def test_commands_never_use_the_locale_encoding(tmp_path):
+    """Non-ASCII comments must work regardless of locale (e.g. cp1252 on Windows)."""
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo, "my_msgs", msgs={"P": "float64 x  # metres, ±0.5 °\n"})
+    git_commit_all(repo, "v1")
+    (repo / "my_msgs" / "msg" / "P.msg").write_text("float64  x  # metres, ±0.5 °\n", "utf-8")
+    lock = tmp_path / "roschema.lock"
+    for args in (
+        ["check", "--against", "HEAD"],
+        ["lint"],
+        ["fmt"],
+        ["freeze", "-o", str(lock)],
+        ["check", "--against", str(lock)],
+    ):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-X",
+                "warn_default_encoding",
+                "-W",
+                "error::EncodingWarning",
+                "-m",
+                "roschema.cli",
+                *args,
+            ],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        assert result.returncode == 0, (args, result.stderr)
+
+
 def test_baseline_git_ref_shadows_dir_with_note(tmp_path, monkeypatch):
     repo = make_git_repo(tmp_path / "repo")
     write_package(repo / "pkgs", "m", msgs={"P": "float32 x\n"})
@@ -178,9 +281,7 @@ def test_baseline_dotslash_uses_directory(tmp_path, monkeypatch):
 
 def test_check_missing_mcap_baseline_errors(tmp_path):
     write_package(tmp_path / "new", "my_msgs", msgs={"Pose": "float32 t\n"})
-    result = runner.invoke(
-        app, ["check", str(tmp_path / "new"), "--against", "baseline.mcap"]
-    )
+    result = runner.invoke(app, ["check", str(tmp_path / "new"), "--against", "baseline.mcap"])
     assert result.exit_code == 2  # file does not exist
 
 

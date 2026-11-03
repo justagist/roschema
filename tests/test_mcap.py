@@ -34,9 +34,23 @@ POINT = "float64 x\nfloat64 y\n"
 
 def test_split_ros2msg_attributes_blocks():
     blocks = _split_ros2msg("demo_msgs/msg/Pose", POSE_CONCAT)
-    assert set(blocks) == {"demo_msgs/msg/Pose", "geometry_msgs/Point"}
+    assert set(blocks) == {"demo_msgs/msg/Pose", "geometry_msgs/msg/Point"}
     assert blocks["demo_msgs/msg/Pose"] == "float32 theta\ngeometry_msgs/Point position"
-    assert blocks["geometry_msgs/Point"] == "float64 x\nfloat64 y"
+    assert blocks["geometry_msgs/msg/Point"] == "float64 x\nfloat64 y"
+
+
+def test_split_ros2msg_service_event_and_empty_message():
+    """Service events carry only an SRV block; a field-less message stays a message."""
+    event = "=" * 80 + "\nSRV: demo_srvs/srv/Add\nint64 a\n---\nint64 sum\n"
+    assert _split_ros2msg("demo_srvs/srv/Add_Event", event) == {
+        "demo_srvs/srv/Add": "int64 a\n---\nint64 sum"
+    }
+    assert _split_ros2msg("std_msgs/msg/Empty", "") == {"std_msgs/msg/Empty": ""}
+    holder = "std_msgs/Empty e\n" + "=" * 80 + "\nMSG: std_msgs/Empty\n"
+    assert _split_ros2msg("demo/msg/Holder", holder) == {
+        "demo/msg/Holder": "std_msgs/Empty e",
+        "std_msgs/msg/Empty": "",
+    }
 
 
 def test_convert_ros2idl_subset():
@@ -103,9 +117,7 @@ def _write_bag(
                 message_encoding="cdr",
                 schema_id=schema_id,
             )
-            writer.add_message(
-                channel_id=channel_id, log_time=0, data=b"", publish_time=0
-            )
+            writer.add_message(channel_id=channel_id, log_time=0, data=b"", publish_time=0)
         writer.finish()
 
 
@@ -307,6 +319,7 @@ def test_mcap_rejects_unsupported_encodings(tmp_path, with_supported):
         "module demo { module msg { struct T { long x; }; module T_Constants { "
         "const long MODE = 1; }; }; };",
         "module demo { module msg { struct Base { long x; }; struct T : Base { long y; }; }; };",
+        "module demo { module msg { struct T { wchar c; }; }; };",  # no msg equivalent
     ],
 )
 def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):
@@ -315,6 +328,93 @@ def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):
     result = runner.invoke(app, ["bag-check", str(bag)])
     assert result.exit_code == 2
     assert "unsupported ros2idl" in result.output
+
+
+def test_bag_check_skips_schemas_without_definitions(tmp_path, monkeypatch):
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo_msgs", msgs={"Pose": POSE_V2})
+    write_package(prefix / "share", "geometry_msgs", msgs={"Point": POINT})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    bag = tmp_path / "missing.mcap"
+    _write_bag(
+        bag,
+        [("demo_msgs/msg/Pose", "ros2msg", POSE_CONCAT), ("demo_msgs/action/Go_Feedback", "", "")],
+    )
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 1
+    assert "RS003" in result.stdout
+    assert "demo_msgs/action/Go_Feedback" in result.output
+
+
+def test_bag_check_compares_service_event_definitions(tmp_path, monkeypatch):
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo_srvs", srvs={"Add": "int64 a\n---\nint32 sum\n"})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    bag = tmp_path / "events.mcap"
+    event = "=" * 80 + "\nSRV: demo_srvs/srv/Add\nint64 a\n---\nint64 sum\n"
+    _write_bag(bag, {"demo_srvs/srv/Add_Event": event})
+    result = runner.invoke(app, ["bag-check", str(bag), "--format", "json"])
+    assert result.exit_code == 1
+    finding = json.loads(result.stdout)["findings"][0]
+    assert (finding["rule"], finding["interface"], finding["section"]) == (
+        "RS003",
+        "demo_srvs/srv/Add",
+        "response",
+    )
+
+
+def test_bag_check_accepts_field_less_messages(tmp_path, monkeypatch):
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "std_msgs", msgs={"Empty": ""})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    bag = tmp_path / "empty-message.mcap"
+    _write_bag(bag, {"std_msgs/msg/Empty": ""})
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 0, result.output
+
+
+def test_bag_check_defaults_to_wire_level(tmp_path, monkeypatch):
+    """Constant changes do not stop current code decoding a recording."""
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo_msgs", msgs={"Mode": "int32 x\n"})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    monkeypatch.chdir(tmp_path)
+    bag = tmp_path / "constants.mcap"
+    _write_bag(bag, {"demo_msgs/msg/Mode": "int32 IDLE=0\nint32 x\n"})
+
+    default = runner.invoke(app, ["bag-check", str(bag)])
+    assert default.exit_code == 0, default.output
+    assert "RS020" not in default.stdout
+    source = runner.invoke(app, ["bag-check", str(bag), "--level", "source"])
+    assert source.exit_code == 1
+    assert "RS020" in source.stdout
+    (tmp_path / "roschema.toml").write_text('[check]\nlevel = "source"\n')
+    configured = runner.invoke(app, ["bag-check", str(bag)])
+    assert configured.exit_code == 1
+
+
+def test_bag_check_applies_target_package_config(tmp_path, monkeypatch):
+    write_package(tmp_path / "src", "demo", msgs={"T": "float64 x\n"})
+    (tmp_path / "src" / "demo" / "roschema.toml").write_text('[check.rules]\nRS003 = "off"\n')
+    monkeypatch.chdir(tmp_path)
+    bag = tmp_path / "target-config.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), "src/demo", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["findings"] == []
+
+
+def test_bag_check_last_target_drops_earlier_target_config(tmp_path, monkeypatch):
+    """A replaced package's configuration must not apply to its replacement."""
+    first = write_package(tmp_path / "first", "demo", msgs={"T": "int32 x\n"})
+    (first / "roschema.toml").write_text('[check.rules]\nRS003 = "off"\n')
+    write_package(tmp_path / "second", "demo", msgs={"T": "float64 x\n"})
+    monkeypatch.chdir(tmp_path)
+    bag = tmp_path / "replaced.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), "first/demo", "second/demo"])
+    assert result.exit_code == 1
+    assert "RS003" in result.stdout
 
 
 def test_mcap_without_schemas_is_a_tool_error(tmp_path):

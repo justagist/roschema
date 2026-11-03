@@ -18,7 +18,7 @@ def _message(ev: ChangeEvent) -> str:
 RULE = Rule(
     id="RS007",
     title="Bound tightened",
-    description="A bounded array or string had its capacity reduced.",
+    description="A sequence or string gained a bound or had its bound reduced.",
     rationale=(
         "A message that was valid before may now exceed the new bound, so a "
         "stricter subscriber rejects previously-valid data."

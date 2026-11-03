@@ -8,19 +8,25 @@ from .summary import summarize
 SCHEMA_VERSION = 1
 
 
-def build_json(findings: list[Finding]) -> dict[str, object]:
-    """Build the JSON-serialisable report document."""
+def build_json(findings: list[Finding], *, advisories: bool = True) -> dict[str, object]:
+    """Build the JSON-serialisable report document.
+
+    ``advisories`` adds per-package semver advice, which only means something
+    for a comparison against a baseline (not for lint).
+    """
     summary = summarize(findings)
+    counts: dict[str, object] = {
+        "total": summary.total,
+        "errors": summary.errors,
+        "warnings": summary.warnings,
+        "suppressed": summary.suppressed,
+    }
+    if advisories:
+        counts["advisories"] = {a.package: a.bump for a in summary.advisories}
     return {
         "version": SCHEMA_VERSION,
         "findings": [_finding_dict(f) for f in findings],
-        "summary": {
-            "total": summary.total,
-            "errors": summary.errors,
-            "warnings": summary.warnings,
-            "suppressed": summary.suppressed,
-            "advisories": {a.package: a.bump for a in summary.advisories},
-        },
+        "summary": counts,
     }
 
 

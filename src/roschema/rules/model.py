@@ -22,6 +22,7 @@ def parse_inline_ignores(comment: str | None) -> tuple[str, ...]:
         return ()
     return tuple(part.strip() for part in match.group(1).split(",") if part.strip())
 
+
 # Compatibility levels, ordered most- to least- wire-significant.
 LEVEL_ORDER = ("wire", "source", "introspection", "behavior")
 LEVEL_LABEL = {

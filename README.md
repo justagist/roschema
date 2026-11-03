@@ -139,7 +139,7 @@ roschema fmt  [TARGET] [--check]
 
 `lint` checks a single tree (no baseline). Naming rules follow rosidl: field
 names snake_case (RSL001), constants UPPER_SNAKE (RSL002), interface names
-PascalCase (RSL003); it also flags deprecated `char`/scalar-`byte` (RSL005) and
+PascalCase (RSL003); it also flags ambiguous `char`/scalar-`byte` (RSL005) and
 request/response field shadowing in services (RSL010). RSL004 (missing doc) and
 RSL006 (unbounded) are off by default; enable via `[lint.rules]` or per run with
 `--rules` (e.g. `--rules RSL004=warn --rules RSL001=off`; a bare `--rules RSL004`
@@ -273,9 +273,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0            # needed for the git-ref baseline
-      - uses: justagist/roschema/action@v1
+      - uses: justagist/roschema/action@main
         with:
           against: origin/${{ github.base_ref }}
+          # version: "roschema==0.2.0"   # pin a release for reproducible results
           # level: source
           # deep: "true"
           # exclude: "vendor_msgs* legacy_msgs/msg/Old"
@@ -284,6 +285,10 @@ jobs:
 `against` takes the same values as the CLI (git ref, directory, `.mcap`,
 `roschema.lock`). A lockfile or directory baseline needs no `fetch-depth: 0`
 because it is a plain file in the checkout.
+
+By default the Action installs the latest roschema release, so new rules can
+change results without any change on your side. Uncomment `version` to pin a
+release instead.
 
 ## Rule reference
 

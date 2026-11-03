@@ -6,6 +6,7 @@ Precedence is CLI flags > per-package ``roschema.toml`` > workspace config
 
 from __future__ import annotations
 
+import difflib
 import sys
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -73,15 +74,10 @@ class Config:
             return self.workspace.rules[rule_id]
         return default
 
-    def is_explicitly_set(self, rule_id: str, package: str) -> bool:
-        """Whether a rule's severity was set in config (bypasses level presets)."""
-        pkg_cfg = self.packages.get(package)
-        if pkg_cfg is not None and rule_id in pkg_cfg.rules:
-            return True
-        return rule_id in self.workspace.rules
-
-    def effective_level(self, package: str, cli_level: str | None) -> str:
-        """Reporting level: CLI > package > workspace > default."""
+    def effective_level(
+        self, package: str, cli_level: str | None, default: str = DEFAULT_LEVEL
+    ) -> str:
+        """Reporting level: CLI > package > workspace > the command's default."""
         if cli_level:
             return cli_level
         pkg_cfg = self.packages.get(package)
@@ -89,7 +85,7 @@ class Config:
             return pkg_cfg.level
         if self.workspace.level:
             return self.workspace.level
-        return DEFAULT_LEVEL
+        return default
 
     def effective_deep(self, package: str, cli_deep: bool | None) -> bool:
         """Deep checking: CLI > package > workspace > off."""
@@ -115,25 +111,30 @@ class Config:
 
 
 def finalize_findings(
-    findings: list[Finding], config: Config, cli_level: str | None
+    findings: list[Finding],
+    config: Config,
+    cli_level: str | None,
+    default_level: str = DEFAULT_LEVEL,
 ) -> list[Finding]:
     """Apply config to raw findings.
 
     Drops rules turned ``off`` and findings outside the selected level, adjusts
     severities, and flags inline-suppressed / allowlisted findings (kept in the
     list with ``suppressed=True`` so they can still be counted and emitted).
+    ``default_level`` applies when neither the CLI nor config sets a level.
     """
     out: list[Finding] = []
     for finding in findings:
         pkg = finding.package
-        severity = config.effective_severity(finding.rule, pkg, finding.severity)
+        default = finding.severity
+        severity = config.effective_severity(finding.rule, pkg, default)
         if severity == "off":
             continue
         finding = replace(finding, severity=severity)
-        # A rule whose severity is set explicitly in config bypasses the level
-        # preset (an opt-in rule like RS060 is reported once enabled).
-        if not config.is_explicitly_set(finding.rule, pkg):
-            bundle = LEVEL_BUNDLES[config.effective_level(pkg, cli_level)]
+        # An opt-in rule (off by default, like RS060) is reported once enabled
+        # whatever the level; every other rule stays within the selected level.
+        if default != "off":
+            bundle = LEVEL_BUNDLES[config.effective_level(pkg, cli_level, default_level)]
             if not (set(finding.levels) & bundle):
                 continue
         if finding.rule in finding.inline_ignores or config.is_allowed(finding):
@@ -199,9 +200,7 @@ def load_config(
     )
 
 
-def _load_workspace(
-    root: Path, config_path: Path | None
-) -> tuple[ScopeConfig, dict[str, str]]:
+def _load_workspace(root: Path, config_path: Path | None) -> tuple[ScopeConfig, dict[str, str]]:
     """Find inherited workspace settings without treating a package as its workspace."""
     if config_path is not None:
         if not config_path.is_file():
@@ -247,8 +246,10 @@ def _read_toml(path: Path) -> dict[str, object]:
 
 def _parse_loaded(data: dict[str, object]) -> tuple[ScopeConfig, dict[str, str]]:
     """Parse check and lint settings from a configuration table."""
+    _reject_unknown(data, ("check", "lint"), "configuration")
     scope = _parse_scope(data)
     lint = _as_dict(data.get("lint"), "[lint]")
+    _reject_unknown(lint, ("rules",), "[lint]")
     lint_rules = _parse_rules(_as_dict(lint.get("rules"), "[lint.rules]"), where="[lint.rules]")
     return scope, lint_rules
 
@@ -256,11 +257,10 @@ def _parse_loaded(data: dict[str, object]) -> tuple[ScopeConfig, dict[str, str]]
 def _parse_scope(data: dict[str, object]) -> ScopeConfig:
     """Validate a check scope and parse its overrides and allowlist."""
     check = _as_dict(data.get("check"), "[check]")
+    _reject_unknown(check, ("level", "deep", "rules", "allow"), "[check]")
     level = check.get("level")
     if level is not None and (not isinstance(level, str) or level not in LEVEL_BUNDLES):
-        raise ConfigError(
-            f"invalid level {level!r}; expected one of {sorted(LEVEL_BUNDLES)}"
-        )
+        raise ConfigError(f"invalid level {level!r}; expected one of {sorted(LEVEL_BUNDLES)}")
     deep = check.get("deep")
     if deep is not None and not isinstance(deep, bool):
         raise ConfigError("[check]: deep must be a boolean")
@@ -282,8 +282,7 @@ def _parse_rules(raw: dict[str, object], where: str) -> dict[str, str]:
             raise ConfigError(f"{where}: unknown rule {rule_id!r}")
         if not isinstance(severity, str) or severity not in _SEVERITIES:
             raise ConfigError(
-                f"{where}: {rule_id} has invalid severity {severity!r}; "
-                f"expected off, warn or error"
+                f"{where}: {rule_id} has invalid severity {severity!r}; expected off, warn or error"
             )
         rules[rule_id] = str(severity)
     return rules
@@ -294,11 +293,10 @@ def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
     entries: list[AllowEntry] = []
     for target, spec in raw.items():
         spec_dict = _as_dict(spec, f"allowlist entry {target!r}")
+        _reject_unknown(spec_dict, ("rules", "reason"), f"allowlist entry {target!r}")
         reason = spec_dict.get("reason")
         if not isinstance(reason, str) or not reason.strip():
-            raise ConfigError(
-                f"allowlist entry {target!r} must include a non-empty 'reason'"
-            )
+            raise ConfigError(f"allowlist entry {target!r} must include a non-empty 'reason'")
         raw_rules = spec_dict.get("rules", [])
         if not isinstance(raw_rules, list):
             raise ConfigError(f"allowlist entry {target!r}: rules must be a list")
@@ -308,6 +306,15 @@ def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
             raise ConfigError(f"allowlist entry {target!r}: unknown rule IDs {sorted(unknown)}")
         entries.append(AllowEntry(target=target, rules=rules, reason=reason))
     return tuple(entries)
+
+
+def _reject_unknown(table: dict[str, object], known: tuple[str, ...], where: str) -> None:
+    """Reject misspelt or unsupported keys so their settings never silently do nothing."""
+    for key in table:
+        if key not in known:
+            close = difflib.get_close_matches(key, known, n=1)
+            hint = f"; did you mean {close[0]!r}?" if close else f"; expected one of {list(known)}"
+            raise ConfigError(f"{where}: unknown key {key!r}{hint}")
 
 
 def _as_dict(value: object, where: str) -> dict[str, object]:

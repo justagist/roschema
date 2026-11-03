@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from typer.testing import CliRunner
 
@@ -55,17 +57,61 @@ def test_rs110_not_emitted_for_a_non_wire_change():
     assert transitive_findings(new, direct) == []
 
 
+def test_rs110_takes_root_severity_and_skips_suppressed_roots():
+    old = _map(_iface("Point", "string<=8 s\n"), _iface("Pose", "my_msgs/Point p\n"))
+    new = _map(_iface("Point", "string<=16 s\n"), _iface("Pose", "my_msgs/Point p\n"))
+    loosened = evaluate(diff_interfaces(old, new))  # RS008, a warning
+    assert [(f.rule, f.severity) for f in transitive_findings(new, loosened)] == [("RS110", "warn")]
+    suppressed = [replace(f, suppressed=True) for f in loosened]
+    assert transitive_findings(new, suppressed) == []
+
+
+def test_rs110_prefers_an_error_root():
+    old = _map(
+        _iface("Near", "string<=8 s\n"),
+        _iface("Far", "float64 x\n"),
+        _iface("Mid", "my_msgs/Far f\n"),
+        _iface("Top", "my_msgs/Near n\nmy_msgs/Mid m\n"),
+    )
+    new = dict(old)
+    new.update(_map(_iface("Near", "string<=16 s\n"), _iface("Far", "float32 x\n")))
+    deep = transitive_findings(new, evaluate(diff_interfaces(old, new)))
+    top = next(f for f in deep if f.interface == "my_msgs/msg/Top")
+    assert top.severity == "error"
+    assert "my_msgs/msg/Far" in top.message
+
+
+def test_cli_deep_respects_allowlisted_root(tmp_path):
+    old, new = tmp_path / "old", tmp_path / "new"
+    write_package(old, "demo", msgs={"Point": "int32 x\n", "Wrapper": "demo/Point point\n"})
+    write_package(new, "demo", msgs={"Point": "float64 x\n", "Wrapper": "demo/Point point\n"})
+    (new / "roschema.toml").write_text(
+        '[check.allow]\n"demo/msg/Point.x" = {rules = ["RS003"], reason = "planned"}\n'
+    )
+    result = runner.invoke(app, ["check", str(new), "--against", str(old), "--deep"])
+    assert result.exit_code == 0
+    assert "RS110" not in result.stdout
+
+
 def test_cli_deep_adds_rs110(tmp_path):
     old = tmp_path / "old"
     new = tmp_path / "new"
-    write_package(old, "my_msgs", msgs={
-        "Point": "float64 x\nfloat64 y\n",
-        "Pose": "my_msgs/Point position\nfloat32 theta\n",
-    })
-    write_package(new, "my_msgs", msgs={
-        "Point": "float32 x\nfloat64 y\n",  # changed
-        "Pose": "my_msgs/Point position\nfloat32 theta\n",  # unchanged
-    })
+    write_package(
+        old,
+        "my_msgs",
+        msgs={
+            "Point": "float64 x\nfloat64 y\n",
+            "Pose": "my_msgs/Point position\nfloat32 theta\n",
+        },
+    )
+    write_package(
+        new,
+        "my_msgs",
+        msgs={
+            "Point": "float32 x\nfloat64 y\n",  # changed
+            "Pose": "my_msgs/Point position\nfloat32 theta\n",  # unchanged
+        },
+    )
 
     shallow = runner.invoke(app, ["check", str(new), "--against", str(old)])
     assert "RS110" not in shallow.stdout

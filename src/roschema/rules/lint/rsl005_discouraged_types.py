@@ -21,7 +21,7 @@ def _check(iface: InterfaceFile) -> list[LintHit]:
                     line=field.line,
                     message=(
                         f"field '{field.name}' uses discouraged type "
-                        f"'{field.type.render()}' (prefer uint8/int8; use byte[] for binary)"
+                        f"'{field.type.render()}' (prefer uint8; use byte[] for binary data)"
                     ),
                     comment=field.trailing_comment,
                 )
@@ -32,10 +32,12 @@ def _check(iface: InterfaceFile) -> list[LintHit]:
 RULE = LintRule(
     id="RSL005",
     title="Discouraged type",
-    description="Uses `char`, or a scalar `byte`, both deprecated aliases in ROS 2.",
+    description="Uses `char`, or a scalar `byte`, whose generated types are ambiguous.",
     rationale=(
-        "ROS 2 deprecated `char` and `byte` as scalar types in favour of "
-        "`uint8`/`int8`; `byte[]` remains idiomatic for opaque binary data."
+        "rosidl generates `char` as `uint8` although the ROS 2 type table lists it "
+        "as a DDS `char`, and a scalar `byte` becomes a Python `bytes` object rather "
+        "than an integer; `uint8` states the intent. `byte[]` remains idiomatic for "
+        "opaque binary data."
     ),
     default_severity=Severity.WARN,
     check=_check,

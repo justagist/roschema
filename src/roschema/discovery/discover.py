@@ -57,9 +57,7 @@ def _is_ignored(vfs: VFS, directory: str) -> bool:
         directory = posixpath.dirname(directory)
 
 
-def discover_named(
-    vfs: VFS, package: str, root: str = "."
-) -> tuple[DiscoveredPackage, ...]:
+def discover_named(vfs: VFS, package: str, root: str = ".") -> tuple[DiscoveredPackage, ...]:
     """Collect interfaces for a known package name without needing ``package.xml``.
 
     Used for ament-index resolution, where the install layout is

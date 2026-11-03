@@ -83,9 +83,7 @@ def test_invalid_level_is_config_error(tmp_path):
 
 
 def test_allow_without_reason_is_config_error(tmp_path):
-    (tmp_path / "roschema.toml").write_text(
-        '[check.allow]\n"p/msg/T.a" = { rules = ["RS001"] }\n'
-    )
+    (tmp_path / "roschema.toml").write_text('[check.allow]\n"p/msg/T.a" = { rules = ["RS001"] }\n')
     with pytest.raises(ConfigError):
         load_config(tmp_path, ())
 
@@ -125,21 +123,19 @@ def test_finalize_allowlist_suppression():
 
 def test_finalize_allowlist_rule_scoped():
     cfg = Config(
-        workspace=ScopeConfig(
-            allow=(AllowEntry("demo/msg/T.a", ("RS999",), "wrong rule"),)
-        )
+        workspace=ScopeConfig(allow=(AllowEntry("demo/msg/T.a", ("RS999",), "wrong rule"),))
     )
     out = finalize_findings([_finding("RS001")], cfg, None)
     assert out[0].suppressed is False  # allow entry names a different rule
 
 
-def test_explicit_config_bypasses_level_preset():
+def test_configured_severity_keeps_level_preset():
+    """Restating or raising a rule's severity must not widen the selected level."""
     behaviour = _finding("RS030", severity="warn", levels=("behavior",))
-    # default level is source: behaviour findings are filtered out
-    assert finalize_findings([behaviour], Config(), None) == []
-    # explicitly configuring the rule bypasses the level preset
-    cfg = Config(workspace=ScopeConfig(rules={"RS030": "warn"}))
-    assert len(finalize_findings([behaviour], cfg, None)) == 1
+    for severity in ("warn", "error"):
+        cfg = Config(workspace=ScopeConfig(rules={"RS030": severity}))
+        assert finalize_findings([behaviour], cfg, None) == []
+        assert len(finalize_findings([behaviour], cfg, "behavior")) == 1
 
 
 def test_rs060_opt_in():
@@ -262,3 +258,24 @@ def test_scalar_pyproject_roschema_section_is_error(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[tool]\nroschema = "invalid"\n')
     with pytest.raises(ConfigError):
         load_config(tmp_path, ())
+
+
+@pytest.mark.parametrize(
+    "toml,message",
+    [
+        ('[chek]\nlevel = "wire"\n', "configuration: unknown key 'chek'; did you mean 'check'?"),
+        ('[check]\nlevle = "wire"\n', "[check]: unknown key 'levle'; did you mean 'level'?"),
+        ('[check.rule]\nRS002 = "off"\n', "[check]: unknown key 'rule'; did you mean 'rules'?"),
+        ('[lint.rule]\nRSL001 = "off"\n', "[lint]: unknown key 'rule'; did you mean 'rules'?"),
+        (
+            '[check.allow]\n"p/msg/T.a" = {reason = "x", rule = ["RS001"]}\n',
+            "allowlist entry 'p/msg/T.a': unknown key 'rule'; did you mean 'rules'?",
+        ),
+    ],
+)
+def test_unknown_keys_are_configuration_errors(tmp_path, toml, message):
+    """Misspelt settings must fail rather than silently fall back to defaults."""
+    (tmp_path / "roschema.toml").write_text(toml)
+    with pytest.raises(ConfigError) as exc:
+        load_config(tmp_path, ())
+    assert str(exc.value) == message

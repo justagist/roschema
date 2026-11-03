@@ -1,4 +1,4 @@
-"""RS006: an array's kind changed (fixed / bounded / unbounded)."""
+"""RS006: a field changed between scalar, fixed-size array and sequence forms."""
 
 from __future__ import annotations
 
@@ -18,10 +18,11 @@ def _message(ev: ChangeEvent) -> str:
 RULE = Rule(
     id="RS006",
     title="Array kind changed",
-    description="A field changed between fixed, bounded and unbounded array forms.",
+    description="A field changed between scalar, fixed-size array and sequence forms.",
     rationale=(
-        "Fixed, bounded and unbounded arrays use different CDR encodings and "
-        "generate different container types."
+        "A sequence carries a length prefix that a fixed-size array and a scalar do "
+        "not, so the CDR layout and the generated container type both change. "
+        "Adding or removing a sequence bound is reported as RS007 or RS008 instead."
     ),
     levels=("wire", "source"),
     default_severity=Severity.ERROR,

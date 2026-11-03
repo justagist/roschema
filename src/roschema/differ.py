@@ -9,10 +9,10 @@ fields is itself a (wire-breaking) event.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
-from .ir import ArrayKind, Constant, Field, InterfaceFile, SectionKind
+from .ir import ArrayKind, Constant, Field, InterfaceFile, SectionKind, TypeRef
 
 
 class ChangeType(Enum):
@@ -51,6 +51,8 @@ _STRUCTURAL = frozenset(
     }
 )
 
+_SEQUENCES = frozenset({ArrayKind.BOUNDED, ArrayKind.UNBOUNDED})
+
 
 @dataclass(frozen=True)
 class ChangeEvent:
@@ -84,13 +86,9 @@ def diff_interfaces(
         old_iface = old.get(key)
         new_iface = new.get(key)
         if old_iface is not None and new_iface is None:
-            events.append(
-                ChangeEvent(ChangeType.INTERFACE_REMOVED, key, None, "", old=old_iface)
-            )
+            events.append(ChangeEvent(ChangeType.INTERFACE_REMOVED, key, None, "", old=old_iface))
         elif new_iface is not None and old_iface is None:
-            events.append(
-                ChangeEvent(ChangeType.INTERFACE_ADDED, key, None, "", new=new_iface)
-            )
+            events.append(ChangeEvent(ChangeType.INTERFACE_ADDED, key, None, "", new=new_iface))
         elif old_iface is not None and new_iface is not None:
             _diff_interface(key, old_iface, new_iface, events)
     return events
@@ -101,7 +99,7 @@ def _diff_interface(
 ) -> None:
     local: list[ChangeEvent] = []
     for sec_old, sec_new in zip(old.sections, new.sections, strict=False):
-        _diff_fields(key, sec_old.kind, sec_old.members, sec_new.members, local)
+        _diff_fields(key, old.package, sec_old.kind, sec_old.members, sec_new.members, local)
         _diff_constants(key, sec_old.kind, sec_old.members, sec_new.members, local)
     _check_message_version(key, old, new, local)
     events.extend(local)
@@ -147,6 +145,7 @@ def _message_version(iface: InterfaceFile) -> Constant | None:
 
 def _diff_fields(
     key: str,
+    package: str,
     section: SectionKind,
     old_members: tuple[object, ...],
     new_members: tuple[object, ...],
@@ -164,7 +163,8 @@ def _diff_fields(
         old_idx, old_field = old_by[old_name]
         for new_name in list(added):
             new_idx, new_field = new_by[new_name]
-            if new_idx == old_idx and old_field.type == new_field.type:
+            same_type = _qualified(old_field.type, package) == _qualified(new_field.type, package)
+            if new_idx == old_idx and same_type:
                 events.append(
                     ChangeEvent(
                         ChangeType.FIELD_RENAMED,
@@ -185,18 +185,14 @@ def _diff_fields(
             ChangeEvent(ChangeType.FIELD_REMOVED, key, section, name, old=old_by[name][1])
         )
     for name in added:
-        events.append(
-            ChangeEvent(ChangeType.FIELD_ADDED, key, section, name, new=new_by[name][1])
-        )
+        events.append(ChangeEvent(ChangeType.FIELD_ADDED, key, section, name, new=new_by[name][1]))
 
     for name in (n for n in old_by if n in new_by):
         old_field = old_by[name][1]
         new_field = new_by[name][1]
-        change = _classify_type_change(old_field, new_field)
+        change = _classify_type_change(old_field, new_field, package)
         if change is not None:
-            events.append(
-                ChangeEvent(change, key, section, name, old=old_field, new=new_field)
-            )
+            events.append(ChangeEvent(change, key, section, name, old=old_field, new=new_field))
         elif _default_changed(old_field, new_field):
             events.append(
                 ChangeEvent(
@@ -223,18 +219,28 @@ def _diff_fields(
         )
 
 
-def _classify_type_change(old: Field, new: Field) -> ChangeType | None:
+def _qualified(type_ref: TypeRef, package: str) -> TypeRef:
+    """Qualify a same-package complex type, so ``Point`` equals ``pkg/Point`` in ``pkg``."""
+    if type_ref.is_builtin or type_ref.package is not None:
+        return type_ref
+    return replace(type_ref, package=package)
+
+
+def _classify_type_change(old: Field, new: Field, package: str) -> ChangeType | None:
     """Return the single most significant type-related change, or ``None``."""
-    o, n = old.type, new.type
+    o, n = _qualified(old.type, package), _qualified(new.type, package)
     if o.base != n.base or o.package != n.package or o.is_builtin != n.is_builtin:
         return ChangeType.FIELD_TYPE_CHANGED
-    if o.array_kind != n.array_kind:
+    # Bounded and unbounded sequences share a CDR encoding, so moving between
+    # them is a bound change (an unbounded sequence has infinite capacity).
+    sequences = (o.array_kind in _SEQUENCES) and (n.array_kind in _SEQUENCES)
+    if o.array_kind != n.array_kind and not sequences:
         return ChangeType.FIELD_ARRAY_KIND_CHANGED
     # A fixed array's size is part of the wire layout: any change is a type change.
     if o.array_kind is ArrayKind.FIXED and o.array_bound != n.array_bound:
         return ChangeType.FIELD_TYPE_CHANGED
     bounds = [(o.string_bound, n.string_bound)]
-    if o.array_kind is ArrayKind.BOUNDED:
+    if sequences:
         bounds.append((o.array_bound, n.array_bound))
     changes = [_bound_direction(old, new) for old, new in bounds if old != new]
     # A tightening must not be hidden by a simultaneous capacity increase.
@@ -290,9 +296,7 @@ def _diff_constants(
             ChangeEvent(ChangeType.CONSTANT_REMOVED, key, section, name, old=old_by[name])
         )
     for name in (n for n in new_by if n not in old_by):
-        events.append(
-            ChangeEvent(ChangeType.CONSTANT_ADDED, key, section, name, new=new_by[name])
-        )
+        events.append(ChangeEvent(ChangeType.CONSTANT_ADDED, key, section, name, new=new_by[name]))
     for name in (n for n in old_by if n in new_by):
         old_c = old_by[name]
         new_c = new_by[name]

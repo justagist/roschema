@@ -13,10 +13,7 @@ from ..model import Rule, Severity
 def _message(ev: ChangeEvent) -> str:
     old = ev.detail.get("old_version")
     new = ev.detail.get("new_version")
-    return (
-        f"structure changed but MESSAGE_VERSION not bumped "
-        f"(was {old}, now {new})"
-    )
+    return f"structure changed but MESSAGE_VERSION not bumped (was {old}, now {new})"
 
 
 RULE = Rule(

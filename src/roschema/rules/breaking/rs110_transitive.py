@@ -21,7 +21,8 @@ RULE = Rule(
     description=(
         "An interface embeds (directly or through nested types) another interface "
         "whose wire layout changed, so it is broken even though its own definition "
-        "did not change. Reported only with --deep."
+        "did not change. Reported only with --deep, with the severity of the "
+        "reported change it traces back to; suppressed changes are not followed."
     ),
     rationale=(
         "CDR inlines nested messages, so a wire-breaking change to an embedded "

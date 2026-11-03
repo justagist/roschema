@@ -26,7 +26,7 @@ int32 a
 
 A field was added to an interface section.
 
-- Levels: wire, source
+- Levels: wire
 - Default severity: error
 
 *Rationale:* Appending a field is source-compatible but still changes the CDR wire layout, so a new publisher and an old subscriber cannot interoperate.
@@ -91,12 +91,12 @@ float32 yaw
 
 ### RS006 -- Array kind changed
 
-A field changed between fixed, bounded and unbounded array forms.
+A field changed between scalar, fixed-size array and sequence forms.
 
 - Levels: wire, source
 - Default severity: error
 
-*Rationale:* Fixed, bounded and unbounded arrays use different CDR encodings and generate different container types.
+*Rationale:* A sequence carries a length prefix that a fixed-size array and a scalar do not, so the CDR layout and the generated container type both change. Adding or removing a sequence bound is reported as RS007 or RS008 instead.
 
 ```
 # before
@@ -107,7 +107,7 @@ int32[8] data
 
 ### RS007 -- Bound tightened
 
-A bounded array or string had its capacity reduced.
+A sequence or string gained a bound or had its bound reduced.
 
 - Levels: wire
 - Default severity: error
@@ -123,7 +123,7 @@ string<=16 name
 
 ### RS008 -- Bound loosened
 
-A bounded array or string had its capacity increased.
+A sequence or string lost its bound or had its bound increased.
 
 - Levels: wire
 - Default severity: warn
@@ -239,7 +239,7 @@ int32 b
 
 ### RS110 -- Transitively broken by an embedded type
 
-An interface embeds (directly or through nested types) another interface whose wire layout changed, so it is broken even though its own definition did not change. Reported only with --deep.
+An interface embeds (directly or through nested types) another interface whose wire layout changed, so it is broken even though its own definition did not change. Reported only with --deep, with the severity of the reported change it traces back to; suppressed changes are not followed.
 
 - Levels: wire
 - Default severity: error
@@ -290,11 +290,11 @@ A field has no trailing documentation comment.
 
 ### RSL005 -- Discouraged type
 
-Uses `char`, or a scalar `byte`, both deprecated aliases in ROS 2.
+Uses `char`, or a scalar `byte`, whose generated types are ambiguous.
 
 - Default severity: warn
 
-*Rationale:* ROS 2 deprecated `char` and `byte` as scalar types in favour of `uint8`/`int8`; `byte[]` remains idiomatic for opaque binary data.
+*Rationale:* rosidl generates `char` as `uint8` although the ROS 2 type table lists it as a DDS `char`, and a scalar `byte` becomes a Python `bytes` object rather than an integer; `uint8` states the intent. `byte[]` remains idiomatic for opaque binary data.
 
 ### RSL006 -- Unbounded string or array
 

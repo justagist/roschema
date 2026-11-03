@@ -169,12 +169,8 @@ class InterfaceFile:
 
     def fields(self) -> tuple[Field, ...]:
         """All fields across every section, in order."""
-        return tuple(
-            m for s in self.sections for m in s.members if isinstance(m, Field)
-        )
+        return tuple(m for s in self.sections for m in s.members if isinstance(m, Field))
 
     def constants(self) -> tuple[Constant, ...]:
         """All constants across every section, in order."""
-        return tuple(
-            m for s in self.sections for m in s.members if isinstance(m, Constant)
-        )
+        return tuple(m for s in self.sections for m in s.members if isinstance(m, Constant))

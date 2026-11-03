@@ -8,9 +8,7 @@ from .parser import parse_text
 from .vfs import VFS
 
 
-def load_interfaces(
-    vfs: VFS, packages: tuple[DiscoveredPackage, ...]
-) -> dict[str, InterfaceFile]:
+def load_interfaces(vfs: VFS, packages: tuple[DiscoveredPackage, ...]) -> dict[str, InterfaceFile]:
     """Read and parse every discovered interface.
 
     Args:

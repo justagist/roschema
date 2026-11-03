@@ -6,6 +6,7 @@ import json
 import os
 import posixpath
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -23,6 +24,7 @@ from .config import (
 from .deep import transitive_findings
 from .differ import diff_interfaces
 from .discovery import (
+    DiscoveredPackage,
     Resolution,
     apply_exclude,
     resolve_ament,
@@ -34,6 +36,7 @@ from .formatter import format_text
 from .freeze import build_lock
 from .ir import InterfaceFile
 from .loader import load_interfaces
+from .mcap_fs import McapTypeFS
 from .parser import ParseError
 from .report import build_github, build_json, render_lint, render_text
 from .rules import Finding, all_lint_rules, evaluate, lint_interfaces
@@ -44,8 +47,14 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
-console = Console()
-err_console = Console(stderr=True)
+# Soft wrapping leaves line breaks to the terminal, so CI logs and pipes (where
+# Rich assumes 80 columns) keep paths and messages on one line.
+console = Console(soft_wrap=True)
+err_console = Console(stderr=True, soft_wrap=True)
+
+# A bag check asks whether current code can still decode the recording, which is
+# a wire question; constant and other source-level changes do not affect it.
+BAG_DEFAULT_LEVEL = "wire"
 
 
 def _version_callback(value: bool) -> None:
@@ -79,7 +88,10 @@ def check(
     ] = None,
     against: Annotated[
         str,
-        typer.Option("--against", help="Baseline: git ref or directory path."),
+        typer.Option(
+            "--against",
+            help="Baseline: git ref, directory, MCAP bag (.mcap) or lockfile (.lock).",
+        ),
     ] = ...,  # type: ignore[assignment]
     fmt: Annotated[
         str, typer.Option("--format", help="Output format: text, json or github.")
@@ -144,6 +156,17 @@ def bag_check(
     fmt: Annotated[
         str, typer.Option("--format", help="Output format: text, json or github.")
     ] = "text",
+    level: Annotated[
+        str | None,
+        typer.Option(
+            "--level",
+            help="Reporting level: wire (default for bags), source, introspection, behavior.",
+        ),
+    ] = None,
+    config_path: Annotated[
+        Path | None,
+        typer.Option("--config", help="Explicit config file (roschema.toml or pyproject.toml)."),
+    ] = None,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
@@ -162,6 +185,9 @@ def bag_check(
     if fmt not in ("text", "json", "github"):
         err_console.print(f"[red]error:[/red] unknown format {fmt!r}")
         raise typer.Exit(code=2)
+    if level is not None and level not in LEVEL_BUNDLES:
+        err_console.print(f"[red]error:[/red] unknown level {level!r}")
+        raise typer.Exit(code=2)
     if not bag.endswith(".mcap"):
         err_console.print(f"[red]error:[/red] expected a .mcap bag, got {bag!r}")
         raise typer.Exit(code=2)
@@ -169,15 +195,18 @@ def bag_check(
     excludes = exclude or []
     try:
         old_res = resolve_bag(bag)
+        _note_skipped_schemas(old_res)
         old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
-        new_ifaces, new_source = _resolve_current(old_ifaces, targets or [], excludes)
-        config = load_config(Path.cwd(), (), None)
+        new_ifaces, new_source, target_packages = _resolve_current(
+            old_ifaces, targets or [], excludes
+        )
+        config = load_config(Path.cwd(), target_packages, config_path)
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
     findings = finalize_findings(
-        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, None
+        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level, BAG_DEFAULT_LEVEL
     )
     _emit(findings, fmt, new_source, old_res.source)
     _exit_for(findings, exit_zero)
@@ -185,24 +214,46 @@ def bag_check(
 
 def _resolve_current(
     bag_ifaces: dict[str, InterfaceFile], targets: list[str], excludes: list[str]
-) -> tuple[dict[str, InterfaceFile], str]:
+) -> tuple[dict[str, InterfaceFile], str, tuple[DiscoveredPackage, ...]]:
     """Build the current-side interfaces for a bag check.
 
     Starts from the ament index (for the packages the bag references), then
-    overlays any explicit targets so they take precedence.
+    overlays any explicit targets so they take precedence. Also returns the
+    target packages with paths relative to the working directory, so their
+    package configuration can be loaded.
     """
     current: dict[str, InterfaceFile] = {}
+    target_packages: list[DiscoveredPackage] = []
     for package in sorted({key.split("/", 1)[0] for key in bag_ifaces}):
         res = resolve_ament(package)
         if res is not None:
             current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
     for target in targets:
-        res = resolve_target(target, include_empty=True)
+        res = _resolve_target(target, include_empty=True)
         replaced = {pkg.name for pkg in res.packages}
         current = {key: iface for key, iface in current.items() if iface.package not in replaced}
         current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
+        target_packages = [pkg for pkg in target_packages if pkg.name not in replaced]
+        if isinstance(res.vfs, RealFS):
+            target_packages += [
+                replace(pkg, path=os.path.relpath(res.vfs.root / pkg.path, Path.cwd()))
+                for pkg in res.packages
+            ]
     source = "targets+environment" if targets else "environment (ament index)"
-    return current, source
+    return current, source, tuple(target_packages)
+
+
+def _resolve_target(
+    target: str | None, *, allow_empty_glob: bool = False, include_empty: bool = False
+) -> Resolution:
+    """Resolve a CLI target, warning when a package name resolves to an installed copy."""
+    res = resolve_target(target, allow_empty_glob=allow_empty_glob, include_empty=include_empty)
+    if res.source.startswith("ament:"):
+        err_console.print(
+            f"[yellow]warning:[/yellow] {target!r} is not a source package under the "
+            f"working directory; using the installed copy from {res.source[len('ament:') :]}"
+        )
+    return res
 
 
 def _compute(
@@ -214,10 +265,17 @@ def _compute(
     deep: bool | None = None,
 ) -> tuple[list[Finding], str, str, str]:
     """Resolve both sides, diff and finalize; the shared check pipeline."""
-    new_res = resolve_target(target, allow_empty_glob=True)
+    new_res = _resolve_target(target, allow_empty_glob=True)
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
     old_res = resolve_old(new_res.vfs.root)
+    _note_skipped_schemas(old_res)
+    if isinstance(old_res.vfs, GitTreeFS):
+        for path in old_res.vfs.missing_submodules:
+            err_console.print(
+                f"[yellow]warning:[/yellow] the baseline commit of submodule {path!r} is "
+                "not available locally, so its packages are not compared"
+            )
     config = load_config(new_res.vfs.root, new_res.packages, config_path)
     excludes = exclude or []
     new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, excludes))
@@ -240,12 +298,23 @@ def _compute(
             raise VfsError(f"target glob {target!r} matched no interface packages on either side")
         old_packages = tuple(p for p in old_packages if p.name in scope)
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
-    raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
+    findings = finalize_findings(evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level)
     deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
     if deep_packages:
-        raw = raw + [f for f in transitive_findings(new_ifaces, raw) if f.package in deep_packages]
-    findings = finalize_findings(raw, config, level)
+        transitive = transitive_findings(new_ifaces, findings)
+        findings += finalize_findings(
+            [f for f in transitive if f.package in deep_packages], config, level
+        )
     return findings, new_res.source, old_res.source, prefix
+
+
+def _note_skipped_schemas(res: Resolution) -> None:
+    """Name the bag schemas recorded without a definition, which are not checked."""
+    if isinstance(res.vfs, McapTypeFS) and res.vfs.skipped:
+        err_console.print(
+            f"[dim]note: {len(res.vfs.skipped)} bag schema(s) have no recorded definition "
+            f"and are not checked: {', '.join(res.vfs.skipped)}[/dim]"
+        )
 
 
 def _display_prefix(target_dir: Path) -> str:
@@ -315,7 +384,7 @@ def lint(
 
     try:
         overrides = _parse_rule_overrides(rules or [])
-        res = resolve_target(target)
+        res = _resolve_target(target)
         if not isinstance(res.vfs, RealFS):
             raise VfsError("lint target must be a directory or workspace")
         config = load_config(res.vfs.root, res.packages, config_path)
@@ -326,7 +395,7 @@ def lint(
 
     findings = finalize_lint(lint_interfaces(interfaces), config, overrides)
     if fmt == "json":
-        typer.echo(json.dumps(build_json(findings), indent=2))
+        typer.echo(json.dumps(build_json(findings, advisories=False), indent=2))
     elif fmt == "github":
         for line in build_github(findings, _display_prefix(res.vfs.root)):
             typer.echo(line)
@@ -371,7 +440,7 @@ def fmt(
 ) -> None:
     """Canonically format interface files (idempotent, comment-preserving)."""
     try:
-        res = resolve_target(target)
+        res = _resolve_target(target)
         if not isinstance(res.vfs, RealFS):
             raise VfsError("fmt target must be a directory or workspace")
         packages = apply_exclude(res.packages, exclude or [])
@@ -383,7 +452,7 @@ def fmt(
                 if formatted != original:
                     changed.append(ref.path)
                     if not check_only:
-                        (res.vfs.root / ref.path).write_text(formatted)
+                        (res.vfs.root / ref.path).write_text(formatted, encoding="utf-8")
     except (VfsError, ParseError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
@@ -407,9 +476,9 @@ def freeze(
         str | None,
         typer.Argument(help="Path, package name, or omit for the current workspace."),
     ] = None,
-    output: Annotated[
-        Path, typer.Option("-o", "--output", help="Lockfile path to write.")
-    ] = Path("roschema.lock"),
+    output: Annotated[Path, typer.Option("-o", "--output", help="Lockfile path to write.")] = Path(
+        "roschema.lock"
+    ),
     exclude: Annotated[
         list[str] | None,
         typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
@@ -417,13 +486,13 @@ def freeze(
 ) -> None:
     """Write a roschema.lock baseline (canonical text + sha256 per interface)."""
     try:
-        res = resolve_target(target)
+        res = _resolve_target(target)
         interfaces = load_interfaces(res.vfs, apply_exclude(res.packages, exclude or []))
     except (VfsError, ParseError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    output.write_text(build_lock(interfaces, __version__))
+    output.write_text(build_lock(interfaces, __version__), encoding="utf-8")
     console.print(f"wrote {len(interfaces)} interface(s) to {output}")
 
 
@@ -441,7 +510,7 @@ def ls(
 ) -> None:
     """List discovered interface packages and the source they came from."""
     try:
-        resolution = resolve_target(target)
+        resolution = _resolve_target(target)
     except VfsError as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
@@ -463,8 +532,7 @@ def _to_json(resolution: Resolution) -> dict[str, object]:
                 "name": pkg.name,
                 "path": pkg.path,
                 "interfaces": [
-                    {"kind": ref.kind, "name": ref.name, "path": ref.path}
-                    for ref in pkg.interfaces
+                    {"kind": ref.kind, "name": ref.name, "path": ref.path} for ref in pkg.interfaces
                 ],
             }
             for pkg in resolution.packages
@@ -484,9 +552,7 @@ def _print_text(resolution: Resolution) -> None:
             console.print(f"  {ref.kind:<7} {ref.name}  [dim]{ref.path}[/dim]")
             total += 1
     plural = "interface" if total == 1 else "interfaces"
-    console.print(
-        f"\n[dim]{len(resolution.packages)} package(s), {total} {plural}[/dim]"
-    )
+    console.print(f"\n[dim]{len(resolution.packages)} package(s), {total} {plural}[/dim]")
 
 
 if __name__ == "__main__":  # pragma: no cover

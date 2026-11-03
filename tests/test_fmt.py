@@ -20,11 +20,7 @@ from roschema.rules import evaluate, parse_inline_ignores
 
 runner = CliRunner()
 FIXTURES = Path(__file__).parent / "fixtures"
-_FIXTURE_FILES = sorted(
-    p
-    for ext in ("*.msg", "*.srv", "*.action")
-    for p in FIXTURES.rglob(ext)
-)
+_FIXTURE_FILES = sorted(p for ext in ("*.msg", "*.srv", "*.action") for p in FIXTURES.rglob(ext))
 
 
 def test_fmt_normalizes_inter_token_whitespace():

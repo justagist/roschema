@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "roschema"
-version = "0.1.3"
+version = "0.2.0"
 description = "Breaking-change detection, linting and formatting for ROS 2 interface definitions"
 readme = "README.md"
 license = "Apache-2.0"
@@ -64,4 +64,6 @@ files = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# A sourced ROS environment auto-loads its launch testing plugins, which fail to
+# import in a virtualenv without ROS's Python dependencies (e.g. PyYAML).
+addopts = "-q -p no:launch_testing -p no:launch_ros -p no:launch_pytest"
