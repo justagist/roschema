@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import cast
 
 from .discovery import DiscoveredPackage
-from .rules import Finding
+from .rules import Finding, all_lint_rules, all_rules
 from .vfs import git_toplevel
 
 if sys.version_info >= (3, 11):
@@ -254,6 +254,8 @@ def _parse_scope(data: dict[str, object]) -> ScopeConfig:
             f"invalid level {level!r}; expected one of {sorted(LEVEL_BUNDLES)}"
         )
     deep = check.get("deep")
+    if deep is not None and not isinstance(deep, bool):
+        raise ConfigError("[check]: deep must be a boolean")
     return ScopeConfig(
         level=level if isinstance(level, str) else None,
         deep=deep if isinstance(deep, bool) else None,
@@ -264,7 +266,11 @@ def _parse_scope(data: dict[str, object]) -> ScopeConfig:
 
 def _parse_rules(raw: dict[str, object], where: str) -> dict[str, str]:
     rules: dict[str, str] = {}
+    active = all_lint_rules() if where == "[lint.rules]" else all_rules()
+    valid = {rule.id for rule in active}
     for rule_id, severity in raw.items():
+        if rule_id not in valid:
+            raise ConfigError(f"{where}: unknown rule {rule_id!r}")
         if severity not in _SEVERITIES:
             raise ConfigError(
                 f"{where}: {rule_id} has invalid severity {severity!r}; "
@@ -284,7 +290,12 @@ def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
                 f"allowlist entry {target!r} must include a non-empty 'reason'"
             )
         raw_rules = spec_dict.get("rules", [])
-        rules = tuple(str(r) for r in raw_rules) if isinstance(raw_rules, list) else ()
+        if not isinstance(raw_rules, list):
+            raise ConfigError(f"allowlist entry {target!r}: rules must be a list")
+        rules = tuple(str(r) for r in raw_rules)
+        unknown = set(rules) - {rule.id for rule in all_rules()}
+        if unknown:
+            raise ConfigError(f"allowlist entry {target!r}: unknown rule IDs {sorted(unknown)}")
         entries.append(AllowEntry(target=target, rules=rules, reason=reason))
     return tuple(entries)
 

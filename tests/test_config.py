@@ -186,3 +186,30 @@ def test_explicit_workspace_config_still_allows_package_overrides(tmp_path):
     cfg = load_config(pkg, _pkgs(pkg), explicit)
     assert cfg.effective_severity("RS001", "demo", "error") == "warn"
     assert cfg.effective_severity("RS003", "demo", "error") == "warn"
+
+
+@pytest.mark.parametrize("section,rule", [
+    ("check.rules", "RS999"), ("check.rules", "RSL001"),
+    ("lint.rules", "RSL999"), ("lint.rules", "RS001"),
+])
+@pytest.mark.parametrize("package_config", [True, False])
+def test_unknown_rule_ids_are_configuration_errors(tmp_path, section, rule, package_config):
+    pkg = write_package(tmp_path, "demo", msgs={"T": "int32 x\n"})
+    config_dir = pkg if package_config else tmp_path
+    (config_dir / "roschema.toml").write_text(f'[{section}]\n{rule} = "warn"\n')
+    with pytest.raises(ConfigError, match="unknown.*rule"):
+        load_config(tmp_path, _pkgs(tmp_path))
+
+
+def test_unknown_allowlist_rule_is_configuration_error(tmp_path):
+    (tmp_path / "roschema.toml").write_text(
+        '[check.allow]\n"demo/msg/T.x" = {rules = ["RS999"], reason = "intentional"}\n'
+    )
+    with pytest.raises(ConfigError, match="unknown.*rule"):
+        load_config(tmp_path, ())
+
+
+def test_deep_setting_must_be_boolean(tmp_path):
+    (tmp_path / "roschema.toml").write_text('[check]\ndeep = "true"\n')
+    with pytest.raises(ConfigError, match="deep.*boolean"):
+        load_config(tmp_path, ())

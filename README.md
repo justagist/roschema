@@ -198,7 +198,9 @@ definitions that differ only in formatting or comments are accepted.
 defaults. Workspace discovery searches upwards to the Git repository root, or
 the filesystem root outside Git. Package configurations override inherited
 workspace values even when checking the package directly by path. At each
-directory, `roschema.toml` takes precedence over `[tool.roschema]`.
+directory, `roschema.toml` takes precedence over `[tool.roschema]`. Unknown rule
+IDs, rule IDs in the wrong section, and invalid settings produce configuration
+errors (exit `2`).
 
 ```toml
 [check]
