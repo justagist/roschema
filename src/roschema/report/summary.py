@@ -28,14 +28,23 @@ class Summary:
     advisories: tuple[PackageAdvisory, ...]
 
 
+# New interfaces named in the coverage line; the rest are counted.
+_NAMED = 3
+
+
 @dataclass(frozen=True)
 class Coverage:
     """How many interfaces a check compared, counted across both sides."""
 
     packages: int
     compared: int  # present on both sides
-    target_only: int
+    new: tuple[str, ...]  # interface keys only in the target, sorted
     baseline_only: int
+
+    @property
+    def target_only(self) -> int:
+        """Number of interfaces only in the target."""
+        return len(self.new)
 
     @property
     def baseline_empty(self) -> bool:
@@ -43,14 +52,20 @@ class Coverage:
         return self.compared + self.baseline_only == 0
 
     def describe(self) -> str:
-        """One-line description, e.g. ``compared 3 interface(s) in 1 package(s)``."""
-        text = f"compared {self.compared} interface(s) in {self.packages} package(s)"
-        extra = [
-            f"{count} only in the {side}"
-            for count, side in ((self.target_only, "target"), (self.baseline_only, "baseline"))
-            if count
-        ]
-        return f"{text}; {', '.join(extra)}" if extra else text
+        """One-line description naming the first few new interfaces.
+
+        For example ``compared 3 interface(s) in 1 package(s); 1 new
+        (my_msgs/msg/Pose)``.
+        """
+        parts = [f"compared {self.compared} interface(s) in {self.packages} package(s)"]
+        if self.new:
+            names = ", ".join(self.new[:_NAMED])
+            if len(self.new) > _NAMED:
+                names += f" and {len(self.new) - _NAMED} more"
+            parts.append(f"{len(self.new)} new ({names})")
+        if self.baseline_only:
+            parts.append(f"{self.baseline_only} removed")
+        return "; ".join(parts)
 
 
 def coverage(old: Collection[str], new: Collection[str]) -> Coverage:
@@ -59,7 +74,7 @@ def coverage(old: Collection[str], new: Collection[str]) -> Coverage:
     return Coverage(
         packages=len({key.split("/", 1)[0] for key in old_keys | new_keys}),
         compared=len(old_keys & new_keys),
-        target_only=len(new_keys - old_keys),
+        new=tuple(sorted(new_keys - old_keys)),
         baseline_only=len(old_keys - new_keys),
     )
 

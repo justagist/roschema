@@ -10,6 +10,11 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - JSON findings link to their rule's documentation (`help_uri`).
 - `roschema explain RULE` prints a rule's reference section.
 
+### Changed
+
+- The coverage line names the first few new interfaces and says "new" and
+  "removed" instead of "only in the target" and "only in the baseline".
+
 ## [0.3.0] - 2026-11-03
 
 ### Added

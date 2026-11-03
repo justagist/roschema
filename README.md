@@ -147,7 +147,10 @@ automatically. Initialised git submodules are compared at the commit the
 baseline records for them.
 
 Every report says how much was compared, for example `compared 12 interface(s)
-in 3 package(s); 1 only in the target`. A baseline with no interfaces at all is
+in 3 package(s); 1 new (my_msgs/msg/Status)`. New interfaces are not findings,
+since adding one breaks nothing; the line names the first few so that an
+unexpected one (say, from an unrelated checkout below the target) is easy to
+spot. A baseline with no interfaces at all is
 an error (exit `2`): every current interface would look newly added, so the
 check would pass without comparing anything. That usually means the wrong
 baseline or target; on the pull request that adds the first interfaces, pass

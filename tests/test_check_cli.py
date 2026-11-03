@@ -84,8 +84,8 @@ def test_check_reports_coverage(tmp_path):
         app, ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
     )
     assert (
-        "compared 1 interface(s) in 2 package(s); 2 only in the target, 1 only in the baseline"
-        in result.stdout
+        "compared 1 interface(s) in 2 package(s); 2 new (my_msgs/msg/C, other_msgs/msg/D); "
+        "1 removed" in result.stdout
     )
 
 
@@ -101,7 +101,7 @@ def test_check_empty_baseline_is_an_error(tmp_path):
 
     allowed = runner.invoke(app, ["check", str(repo), "--against", "HEAD", "--allow-empty"])
     assert allowed.exit_code == 0
-    assert "compared 0 interface(s) in 1 package(s); 1 only in the target" in allowed.stdout
+    assert "compared 0 interface(s) in 1 package(s); 1 new (my_msgs/msg/Pose)" in allowed.stdout
 
 
 def test_check_exit_zero_flag(tmp_path):
