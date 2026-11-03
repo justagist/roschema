@@ -216,3 +216,49 @@ def test_deep_setting_must_be_boolean(tmp_path):
     (tmp_path / "roschema.toml").write_text('[check]\ndeep = "true"\n')
     with pytest.raises(ConfigError, match="deep.*boolean"):
         load_config(tmp_path, ())
+
+
+@pytest.mark.parametrize("package_format", ["roschema.toml", "pyproject.toml"])
+def test_root_package_config_without_discovered_interfaces(tmp_path, package_format):
+    """Keep root package overrides and inherited settings without interface discovery."""
+    (tmp_path / "roschema.toml").write_text('[check.rules]\nRS003 = "warn"\n')
+    pkg = write_package(tmp_path, "demo")
+    prefix = "tool.roschema." if package_format == "pyproject.toml" else ""
+    (pkg / package_format).write_text(
+        f'[{prefix}check.rules]\nRS001 = "off"\n'
+        f'[{prefix}check.allow]\n"demo/msg/T.a" = {{reason = "intentional"}}\n'
+    )
+    cfg = load_config(pkg, ())
+    assert cfg.effective_severity("RS001", "demo", "error") == "off"
+    assert cfg.effective_severity("RS003", "demo", "error") == "warn"
+    assert cfg.effective_severity("RS001", "other", "error") == "error"
+    assert cfg.is_allowed(_finding("RS001"))
+
+
+@pytest.mark.parametrize("package_format", ["roschema.toml", "pyproject.toml"])
+@pytest.mark.parametrize(
+    "setting",
+    [
+        'check = "invalid"',
+        'lint = "invalid"',
+        'check.rules = "invalid"',
+        'check.allow = "invalid"',
+        'lint.rules = "invalid"',
+        "check.level = []",
+        "check.rules.RS001 = []",
+    ],
+)
+def test_invalid_package_config_shape_is_error(tmp_path, package_format, setting):
+    """Malformed package sections must produce configuration errors."""
+    pkg = write_package(tmp_path, "demo", msgs={"T": "int32 x\n"})
+    prefix = "[tool.roschema]\n" if package_format == "pyproject.toml" else ""
+    (pkg / package_format).write_text(prefix + setting + "\n")
+    with pytest.raises(ConfigError):
+        load_config(tmp_path, _pkgs(tmp_path))
+
+
+def test_scalar_pyproject_roschema_section_is_error(tmp_path):
+    """Reject a scalar tool section before attempting to parse its settings."""
+    (tmp_path / "pyproject.toml").write_text('[tool]\nroschema = "invalid"\n')
+    with pytest.raises(ConfigError):
+        load_config(tmp_path, ())

@@ -259,3 +259,43 @@ def test_direct_package_check_inherits_workspace_config(tmp_path, monkeypatch):
         assert result.exit_code == 0
         findings = json.loads(result.stdout)["findings"]
         assert [(f["rule"], f["severity"]) for f in findings] == [("RS003", "warn")]
+
+
+def test_deleted_last_interface_keeps_package_config(tmp_path):
+    """A package's removal rules still apply after its last interface is deleted."""
+    repo = make_git_repo(tmp_path / "repo")
+    pkg = write_package(repo / "src", "demo", msgs={"T": "int32 x\n"})
+    (pkg / "roschema.toml").write_text('[check.rules]\nRS040 = "warn"\n')
+    git_commit_all(repo, "baseline")
+    (pkg / "msg" / "T.msg").unlink()
+    result = runner.invoke(app, ["check", str(pkg), "--against", "HEAD", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    findings = json.loads(result.stdout)["findings"]
+    assert [(f["rule"], f["severity"]) for f in findings] == [("RS040", "warn")]
+
+
+@pytest.mark.parametrize("baseline", ["git", "directory"])
+@pytest.mark.parametrize("pattern", ["src/nested/../*", "src/*/../*", "src/missing*/../*"])
+def test_glob_parent_traversal_preserves_deletion_scope(tmp_path, monkeypatch, baseline, pattern):
+    """Match traversal through existing glob directories on each baseline independently."""
+    old = make_git_repo(tmp_path / "old")
+    for name in ("gone", "survivor"):
+        write_package(old / "src", name, msgs={"T": "int32 x\n"})
+    write_package(old / "outside", "other", msgs={"T": "int32 x\n"})
+    (old / "src" / "nested").mkdir()
+    (old / "src" / "nested" / "keep").touch()
+    git_commit_all(old, "baseline")
+    new = tmp_path / "new"
+    shutil.copytree(old, new)
+    shutil.rmtree(new / "src" / "gone")
+    shutil.rmtree(new / "outside")
+    monkeypatch.chdir(new)
+    against = "HEAD" if baseline == "git" else str(old)
+    result = runner.invoke(app, ["check", pattern, "--against", against, "--format", "json"])
+    if "missing" in pattern:
+        assert result.exit_code == 2
+        assert "matched no interface packages" in result.output
+    else:
+        assert result.exit_code == 1, result.output
+        findings = json.loads(result.stdout)["findings"]
+        assert [(f["package"], f["rule"]) for f in findings] == [("gone", "RS040")]

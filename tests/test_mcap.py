@@ -67,11 +67,15 @@ def test_convert_ros2idl_subset():
     assert "geometry_msgs/Point point" in body
 
 
-def test_convert_ros2idl_accepts_keywords_in_string_constants():
+@pytest.mark.parametrize("value", ["enum Choice", "const int32 MODE = 1", "struct U {", "}"])
+def test_convert_ros2idl_accepts_keywords_in_string_constants(value):
+    """Declaration-like string contents must not affect IDL validation or structure."""
     idl = (
-        'module demo { module msg { struct T { const string NOTE = "enum Choice"; int32 x; }; }; };'
+        'module demo { module msg { struct T { const string NOTE = "'
+        + value
+        + '"; int32 x; }; }; };'
     )
-    assert _convert_ros2idl(idl) == {"demo/msg/T": 'string NOTE="enum Choice"\nint32 x'}
+    assert _convert_ros2idl(idl) == {"demo/msg/T": f'string NOTE="{value}"\nint32 x'}
 
 
 # --- end-to-end with a real MCAP ---
@@ -299,6 +303,10 @@ def test_mcap_rejects_unsupported_encodings(tmp_path, with_supported):
         "module demo { module msg { enum Choice { A, B }; struct T { Choice x; }; }; };",
         "module demo { module msg { struct T { int32 x; }; struct U { unknown x; }; }; };",
         "module demo { module msg { @unsupported struct T { int32 x; }; }; };",
+        "module demo { module msg { const long MODE = 1; struct T { long x; }; }; };",
+        "module demo { module msg { struct T { long x; }; module T_Constants { "
+        "const long MODE = 1; }; }; };",
+        "module demo { module msg { struct Base { long x; }; struct T : Base { long y; }; }; };",
     ],
 )
 def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):
@@ -343,3 +351,41 @@ def test_last_source_target_replaces_previous_package(tmp_path):
     result = runner.invoke(app, ["bag-check", str(bag), str(first), str(second)])
     assert result.exit_code == 1
     assert "RS040" in result.stdout
+
+
+@pytest.mark.parametrize("package_format", ["roschema.toml", "pyproject.toml"])
+def test_bag_check_uses_current_package_config(tmp_path, monkeypatch, package_format):
+    """Bag checks retain inherited rules and current-package severity overrides."""
+    bag = tmp_path / "config.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n", "other/msg/T": "int32 x\n"})
+    (tmp_path / "roschema.toml").write_text('[check.rules]\nRS040 = "warn"\n')
+    pkg = write_package(tmp_path, "demo")
+    prefix = "tool.roschema." if package_format == "pyproject.toml" else ""
+    (pkg / package_format).write_text(f'[{prefix}check.rules]\nRS040 = "off"\n')
+    monkeypatch.chdir(pkg)
+    result = runner.invoke(app, ["bag-check", str(bag), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    findings = json.loads(result.stdout)["findings"]
+    assert [(f["package"], f["severity"]) for f in findings] == [("other", "warn")]
+
+
+@pytest.mark.parametrize(
+    "definition",
+    ["float64 INVALID=nan\n", "float64 x nan\n", "float64[] x [nan, 1.0]\n"],
+)
+@pytest.mark.parametrize("embedded", [False, True])
+def test_mcap_accepts_equivalent_nan_definitions(tmp_path, definition, embedded):
+    """Repeated schemas and dependencies may contain equivalent NaN values."""
+    bag = tmp_path / "nan.mcap"
+    schema = "demo/msg/T"
+    text = definition
+    if embedded:
+        schema = "demo/msg/Wrapper"
+        text = "demo/T value\n===\nMSG: demo/T\n" + definition
+    _write_bag(bag, [(schema, "ros2msg", text), ("demo/msg/T", "ros2msg", definition)])
+    messages = {"T": definition}
+    if embedded:
+        messages["Wrapper"] = "demo/T value\n"
+    pkg = write_package(tmp_path, "demo", msgs=messages)
+    result = runner.invoke(app, ["bag-check", str(bag), str(pkg)])
+    assert result.exit_code == 0, result.output

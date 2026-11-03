@@ -11,9 +11,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
-from .discovery import DiscoveredPackage
+from .discovery import DiscoveredPackage, discover
 from .rules import Finding, all_lint_rules, all_rules
-from .vfs import git_toplevel
+from .vfs import RealFS, git_toplevel
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -183,6 +183,8 @@ def load_config(
     """
     root = root.resolve()
     workspace_scope, lint_rules = _load_workspace(root, config_path)
+    if (root / "package.xml").is_file() and not any(not pkg.path for pkg in packages):
+        packages += tuple(pkg for pkg in discover(RealFS(root), include_empty=True) if not pkg.path)
     package_configs: dict[str, ScopeConfig] = {}
     package_lint_rules: dict[str, dict[str, str]] = {}
     for pkg in packages:
@@ -200,12 +202,13 @@ def load_config(
 def _load_workspace(
     root: Path, config_path: Path | None
 ) -> tuple[ScopeConfig, dict[str, str]]:
+    """Find inherited workspace settings without treating a package as its workspace."""
     if config_path is not None:
         if not config_path.is_file():
             raise ConfigError(f"config file not found: {config_path}")
         data = _read_toml(config_path)
         if config_path.name == "pyproject.toml":
-            data = _as_dict(_as_dict(data.get("tool")).get("roschema"))
+            data = _as_dict(_as_dict(data.get("tool"), "[tool]").get("roschema"), "[tool.roschema]")
         return _parse_loaded(data)
 
     boundary = git_toplevel(root)
@@ -227,7 +230,8 @@ def _load_directory_config(directory: Path) -> tuple[ScopeConfig, dict[str, str]
         return _parse_loaded(_read_toml(roschema_toml))
     pyproject = directory / "pyproject.toml"
     if pyproject.is_file():
-        data = _as_dict(_as_dict(_read_toml(pyproject).get("tool")).get("roschema"))
+        tool = _as_dict(_read_toml(pyproject).get("tool"), "[tool]")
+        data = _as_dict(tool.get("roschema"), "[tool.roschema]")
         if data:
             return _parse_loaded(data)
     return None
@@ -242,16 +246,18 @@ def _read_toml(path: Path) -> dict[str, object]:
 
 
 def _parse_loaded(data: dict[str, object]) -> tuple[ScopeConfig, dict[str, str]]:
+    """Parse check and lint settings from a configuration table."""
     scope = _parse_scope(data)
-    lint = _as_dict(data.get("lint"))
-    lint_rules = _parse_rules(_as_dict(lint.get("rules")), where="[lint.rules]")
+    lint = _as_dict(data.get("lint"), "[lint]")
+    lint_rules = _parse_rules(_as_dict(lint.get("rules"), "[lint.rules]"), where="[lint.rules]")
     return scope, lint_rules
 
 
 def _parse_scope(data: dict[str, object]) -> ScopeConfig:
-    check = _as_dict(data.get("check"))
+    """Validate a check scope and parse its overrides and allowlist."""
+    check = _as_dict(data.get("check"), "[check]")
     level = check.get("level")
-    if level is not None and level not in LEVEL_BUNDLES:
+    if level is not None and (not isinstance(level, str) or level not in LEVEL_BUNDLES):
         raise ConfigError(
             f"invalid level {level!r}; expected one of {sorted(LEVEL_BUNDLES)}"
         )
@@ -261,19 +267,20 @@ def _parse_scope(data: dict[str, object]) -> ScopeConfig:
     return ScopeConfig(
         level=level if isinstance(level, str) else None,
         deep=deep if isinstance(deep, bool) else None,
-        rules=_parse_rules(_as_dict(check.get("rules")), where="[check.rules]"),
-        allow=_parse_allow(_as_dict(check.get("allow"))),
+        rules=_parse_rules(_as_dict(check.get("rules"), "[check.rules]"), where="[check.rules]"),
+        allow=_parse_allow(_as_dict(check.get("allow"), "[check.allow]")),
     )
 
 
 def _parse_rules(raw: dict[str, object], where: str) -> dict[str, str]:
+    """Validate rule identifiers and severities for the given section."""
     rules: dict[str, str] = {}
     active = all_lint_rules() if where == "[lint.rules]" else all_rules()
     valid = {rule.id for rule in active}
     for rule_id, severity in raw.items():
         if rule_id not in valid:
             raise ConfigError(f"{where}: unknown rule {rule_id!r}")
-        if severity not in _SEVERITIES:
+        if not isinstance(severity, str) or severity not in _SEVERITIES:
             raise ConfigError(
                 f"{where}: {rule_id} has invalid severity {severity!r}; "
                 f"expected off, warn or error"
@@ -283,9 +290,10 @@ def _parse_rules(raw: dict[str, object], where: str) -> dict[str, str]:
 
 
 def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
+    """Parse reasoned allowlist entries with validated rule identifiers."""
     entries: list[AllowEntry] = []
     for target, spec in raw.items():
-        spec_dict = _as_dict(spec)
+        spec_dict = _as_dict(spec, f"allowlist entry {target!r}")
         reason = spec_dict.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             raise ConfigError(
@@ -302,5 +310,10 @@ def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
     return tuple(entries)
 
 
-def _as_dict(value: object) -> dict[str, object]:
-    return value if isinstance(value, dict) else {}
+def _as_dict(value: object, where: str) -> dict[str, object]:
+    """Accept an optional table without silently discarding malformed settings."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigError(f"{where} must be a table")
+    return value

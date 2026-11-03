@@ -14,15 +14,18 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Pass GitHub Action inputs as literal arguments to prevent shell injection.
 - Report tightened bounds even when another bound on the same field increases.
 - Include deleted packages when checking glob targets against Git or directory
-  baselines; reject path globs for lockfile and MCAP baselines.
+  baselines, including globs with parent traversal; reject path globs for lockfile
+  and MCAP baselines.
 - Reject unsupported, conflicting or unusable MCAP schemas instead of silently
   checking incomplete definitions, while preserving supported IDL string constants.
+- Accept equivalent NaN constants and defaults when comparing repeated MCAP schemas.
 - Replace each installed package's full interface set with its source target in
   `bag-check`, so deleted source interfaces are reported as removed.
 - Honour workspace and package deep-check settings, with `--deep` / `--no-deep`
   taking precedence.
 - Inherit enclosing workspace configuration when targeting a package directly,
   and apply package lint overrides from `roschema.toml` or `pyproject.toml`.
+- Preserve root package settings in `bag-check` and after deleting its last interface.
 - Reject unknown or misplaced rule identifiers and invalid configuration values.
 - Detect unbounded string elements inside arrays and sequences with RSL006.
 

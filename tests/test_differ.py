@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from roschema.differ import ChangeType, diff_interfaces
 from roschema.ir import SectionKind
 from roschema.parser import parse_text
@@ -148,3 +150,20 @@ def test_loosening_both_bounds_stays_a_single_event():
     assert _types(_events("string<=8[<=4] names\n", "string<=64[<=16] names\n")) == [
         ChangeType.FIELD_BOUND_LOOSENED
     ]
+
+
+@pytest.mark.parametrize(
+    "old,new,event",
+    [
+        ("float64 INVALID=nan\n", "float64 INVALID=NaN\n", None),
+        ("float64 x nan\n", "float64 x nan\n", None),
+        ("float64[] x [nan, 1]\n", "float64[] x [NaN, 1.0]\n", None),
+        ("float64 INVALID=nan\n", "float64 INVALID=1\n", ChangeType.CONSTANT_VALUE_CHANGED),
+        ("float64 x nan\n", "float64 x 1\n", ChangeType.FIELD_DEFAULT_CHANGED),
+        ("float64[] x [nan, 1]\n", "float64[] x [nan, 2]\n", ChangeType.FIELD_DEFAULT_CHANGED),
+        ("float64[] x [nan]\n", "float64[] x [nan, 1]\n", ChangeType.FIELD_DEFAULT_CHANGED),
+    ],
+)
+def test_nan_value_equivalence(old, new, event):
+    """NaNs compare equally without hiding changes to neighbouring array values."""
+    assert _types(_events(old, new)) == ([] if event is None else [event])

@@ -253,7 +253,18 @@ def _default_changed(old: Field, new: Field) -> bool:
         return True
     if old.default is None or new.default is None:
         return False
-    return old.default.value != new.default.value
+    return not _values_equal(old.default.value, new.default.value)
+
+
+def _values_equal(old: object, new: object) -> bool:
+    """Compare parsed values, treating NaNs in scalars and arrays as equivalent."""
+    if isinstance(old, float) and isinstance(new, float) and math.isnan(old) and math.isnan(new):
+        return True
+    if isinstance(old, tuple) and isinstance(new, tuple):
+        return len(old) == len(new) and all(
+            _values_equal(o, n) for o, n in zip(old, new, strict=True)
+        )
+    return old == new
 
 
 def _bound_direction(old_bound: int | None, new_bound: int | None) -> ChangeType:
@@ -291,7 +302,7 @@ def _diff_constants(
                     ChangeType.CONSTANT_TYPE_CHANGED, key, section, name, old=old_c, new=new_c
                 )
             )
-        elif old_c.value != new_c.value:
+        elif not _values_equal(old_c.value, new_c.value):
             events.append(
                 ChangeEvent(
                     ChangeType.CONSTANT_VALUE_CHANGED, key, section, name, old=old_c, new=new_c

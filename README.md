@@ -177,7 +177,10 @@ dependent definitions) are fully supported; `ros2idl` is a best-effort
 conversion of the msg-equivalent subset. Unsupported encodings or IDL constructs,
 conflicting definitions of the same type (including embedded dependencies), and
 bags without usable ROS schemas produce a tool error (exit `2`). Equivalent
-definitions that differ only in formatting or comments are accepted.
+definitions that differ only in formatting or comments are accepted, including
+repeated NaN constants and defaults. IDL struct inheritance and constants outside
+structs (including generated `T_Constants` modules) are rejected because their
+conversion is incomplete.
 
 ## Compatibility levels
 

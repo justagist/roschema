@@ -181,18 +181,30 @@ def _convert_ros2idl(text: str) -> dict[str, str]:
     """Convert the msg-equivalent subset of an IDL blob into ``{type: body}``."""
     text = re.sub(r"//[^\n]*", "", text)
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    code = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
-    if re.search(r"\b(?:enum|union|typedef)\s+\w+|(?:^|[;{}])\s*@\w+", code, re.MULTILINE):
+    code = re.sub(r'"(?:\\.|[^"\\])*"', lambda m: " " * len(m.group()), text)
+    if re.search(
+        r"\b(?:enum|union|typedef)\s+\w+|(?:^|[;{}])\s*@\w+|\bstruct\s+\w+\s*:",
+        code,
+        re.MULTILINE,
+    ):
         raise VfsError("unsupported ros2idl construct; conversion would be incomplete")
     blocks: dict[str, str] = {}
-    for struct_match in _STRUCT_RE.finditer(text):
+    outside_structs: list[str] = []
+    end = 0
+    for struct_match in _STRUCT_RE.finditer(code):
+        outside_structs.append(code[end : struct_match.start()])
         name = struct_match.group(1)
         pkg = _enclosing_package(text, struct_match.start())
-        body = _struct_body(text, struct_match.end())
+        end = struct_match.end() + len(_struct_body(code, struct_match.end()))
+        body = text[struct_match.end() : end]
+        end += 1
         lines = _convert_struct_body(body)
         if lines is None:
             raise VfsError(f"unsupported ros2idl struct {pkg}/msg/{name}")
         _store_definition(blocks, f"{pkg}/msg/{name}", "\n".join(lines))
+    outside_structs.append(code[end:])
+    if re.search(r"\bconst\b", "".join(outside_structs)):
+        raise VfsError("unsupported ros2idl constant outside a struct")
     return blocks
 
 
