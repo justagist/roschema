@@ -226,7 +226,8 @@ def bag_check(
     )
     cov = coverage(old_ifaces, new_ifaces)
     _require_baseline(cov, "the bag", allow_empty=False)
-    _emit(findings, fmt, new_source, old_res.source, cov)
+    files = {key: iface.source_file for key, iface in new_ifaces.items()}
+    _emit(findings, fmt, new_source, old_res.source, cov, interface_files=files)
     _exit_for(findings, exit_zero, warnings_as_errors)
 
 
