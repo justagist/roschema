@@ -64,4 +64,6 @@ files = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# A sourced ROS environment auto-loads its launch testing plugins, which fail to
+# import in a virtualenv without ROS's Python dependencies (e.g. PyYAML).
+addopts = "-q -p no:launch_testing -p no:launch_ros"
