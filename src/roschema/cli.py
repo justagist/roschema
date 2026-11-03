@@ -234,9 +234,7 @@ def _compute(
             pattern = posixpath.join(prefix, pattern)
         manifests = set(old_res.vfs.glob(pattern.rstrip("/") + "/**/package.xml"))
         scope = {p.name for p in new_res.packages} | {
-            p.name
-            for p in old_packages
-            if posixpath.join(p.path, "package.xml") in manifests
+            p.name for p in old_packages if posixpath.join(p.path, "package.xml") in manifests
         }
         if not scope:
             raise VfsError(f"target glob {target!r} matched no interface packages on either side")
@@ -245,9 +243,7 @@ def _compute(
     raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
     deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
     if deep_packages:
-        raw = raw + [
-            f for f in transitive_findings(new_ifaces, raw) if f.package in deep_packages
-        ]
+        raw = raw + [f for f in transitive_findings(new_ifaces, raw) if f.package in deep_packages]
     findings = finalize_findings(raw, config, level)
     return findings, new_res.source, old_res.source, prefix
 

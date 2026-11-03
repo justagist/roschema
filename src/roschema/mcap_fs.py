@@ -97,7 +97,6 @@ def _build_tree(schemas: list[tuple[str, str, str]]) -> dict[str, str]:
     return files
 
 
-
 def _store_definition(definitions: dict[str, str], name: str, body: str) -> None:
     """Coalesce equivalent schemas and reject conflicting type definitions."""
     if name in definitions:

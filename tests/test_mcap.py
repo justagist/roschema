@@ -82,12 +82,11 @@ def _write_bag(
         writer.start()
         entries = (
             [(name, "ros2msg", text) for name, text in schemas.items()]
-            if isinstance(schemas, dict) else schemas
+            if isinstance(schemas, dict)
+            else schemas
         )
         for name, encoding, text in entries:
-            schema_id = writer.register_schema(
-                name=name, encoding=encoding, data=text.encode()
-            )
+            schema_id = writer.register_schema(name=name, encoding=encoding, data=text.encode())
             channel_id = writer.register_channel(
                 topic="/" + name.replace("/", "_"),
                 message_encoding="cdr",
@@ -235,10 +234,13 @@ def test_mcap_rejects_conflicting_schemas_in_either_order(tmp_path, summary, rev
 
 def test_mcap_accepts_equivalent_duplicate_definitions(tmp_path):
     bag = tmp_path / "equivalent.mcap"
-    _write_bag(bag, [
-        ("demo/msg/T", "ros2msg", "int32 x\n"),
-        ("demo/T", "ros2msg", "int32   x # another comment\n"),
-    ])
+    _write_bag(
+        bag,
+        [
+            ("demo/msg/T", "ros2msg", "int32 x\n"),
+            ("demo/T", "ros2msg", "int32   x # another comment\n"),
+        ],
+    )
     write_package(tmp_path / "ws", "demo", msgs={"T": "int32 x\n"})
     result = runner.invoke(app, ["bag-check", str(bag), str(tmp_path / "ws")])
     assert result.exit_code == 0
@@ -251,8 +253,10 @@ def test_mcap_rejects_conflicting_embedded_definitions(tmp_path, same_schema):
     second = "int32 x\n===\nMSG: demo/Dep\nfloat64 value\n"
     schemas = (
         [("demo/msg/T", "ros2msg", first + "===\nMSG: demo/Dep\nfloat64 value\n")]
-        if same_schema else [
-            ("demo/msg/T", "ros2msg", first), ("demo/msg/U", "ros2msg", second),
+        if same_schema
+        else [
+            ("demo/msg/T", "ros2msg", first),
+            ("demo/msg/U", "ros2msg", second),
         ]
     )
     _write_bag(bag, schemas)
@@ -274,11 +278,14 @@ def test_mcap_rejects_unsupported_encodings(tmp_path, with_supported):
     assert "jsonschema" in result.output
 
 
-@pytest.mark.parametrize("idl", [
-    "module demo { module msg { enum Choice { A, B }; struct T { Choice x; }; }; };",
-    "module demo { module msg { struct T { int32 x; }; struct U { unknown x; }; }; };",
-    "module demo { module msg { @unsupported struct T { int32 x; }; }; };",
-])
+@pytest.mark.parametrize(
+    "idl",
+    [
+        "module demo { module msg { enum Choice { A, B }; struct T { Choice x; }; }; };",
+        "module demo { module msg { struct T { int32 x; }; struct U { unknown x; }; }; };",
+        "module demo { module msg { @unsupported struct T { int32 x; }; }; };",
+    ],
+)
 def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):
     bag = tmp_path / "unsupported-idl.mcap"
     _write_bag(bag, [("demo/msg/T", "ros2idl", idl)])

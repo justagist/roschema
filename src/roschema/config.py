@@ -190,7 +190,9 @@ def load_config(
         if loaded is not None:
             package_configs[pkg.name], package_lint_rules[pkg.name] = loaded
     return Config(
-        workspace=workspace_scope, packages=package_configs, lint_rules=lint_rules,
+        workspace=workspace_scope,
+        packages=package_configs,
+        lint_rules=lint_rules,
         package_lint_rules=package_lint_rules,
     )
 

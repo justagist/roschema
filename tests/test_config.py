@@ -159,8 +159,7 @@ def test_package_target_inherits_workspace_and_keeps_overrides(tmp_path, package
     pkg = write_package(tmp_path / "src", "demo", msgs={"T": "int32 x\n"})
     prefix = "tool.roschema." if package_format == "pyproject.toml" else ""
     (pkg / package_format).write_text(
-        f'[{prefix}check.rules]\nRS003 = "warn"\n'
-        f'[{prefix}lint.rules]\nRSL001 = "off"\n'
+        f'[{prefix}check.rules]\nRS003 = "warn"\n[{prefix}lint.rules]\nRSL001 = "off"\n'
     )
     for root in (tmp_path, pkg):
         cfg = load_config(root, _pkgs(root))
@@ -188,10 +187,15 @@ def test_explicit_workspace_config_still_allows_package_overrides(tmp_path):
     assert cfg.effective_severity("RS003", "demo", "error") == "warn"
 
 
-@pytest.mark.parametrize("section,rule", [
-    ("check.rules", "RS999"), ("check.rules", "RSL001"),
-    ("lint.rules", "RSL999"), ("lint.rules", "RS001"),
-])
+@pytest.mark.parametrize(
+    "section,rule",
+    [
+        ("check.rules", "RS999"),
+        ("check.rules", "RSL001"),
+        ("lint.rules", "RSL999"),
+        ("lint.rules", "RS001"),
+    ],
+)
 @pytest.mark.parametrize("package_config", [True, False])
 def test_unknown_rule_ids_are_configuration_errors(tmp_path, section, rule, package_config):
     pkg = write_package(tmp_path, "demo", msgs={"T": "int32 x\n"})

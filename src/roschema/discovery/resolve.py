@@ -43,7 +43,8 @@ def resolve_target(
     if target is None:
         vfs = RealFS(base)
         return Resolution(
-            vfs=vfs, packages=discover(vfs, ".", include_empty=include_empty),
+            vfs=vfs,
+            packages=discover(vfs, ".", include_empty=include_empty),
             source=f"workspace:{base}",
         )
 
@@ -56,7 +57,8 @@ def resolve_target(
     if path.is_dir():
         vfs = RealFS(path)
         return Resolution(
-            vfs=vfs, packages=discover(vfs, ".", include_empty=include_empty),
+            vfs=vfs,
+            packages=discover(vfs, ".", include_empty=include_empty),
             source=f"path:{path}",
         )
 
