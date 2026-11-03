@@ -28,7 +28,7 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
     if attack_input is None:
         inputs["deep"], inputs["exclude"] = "false", ""
     else:
-        inputs[attack_input] = '$(printf injected) `printf injected` "quoted"'
+        inputs[attack_input] = '$(touch "$INJECTION_MARKER") `touch "$INJECTION_MARKER"` "quoted"'
         if attack_input == "exclude":
             inputs["exclude"] += "\nvendor_*\tlegacy_?"
     action = _ACTION.read_text()
@@ -40,17 +40,20 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
     uvx.write_text('#!/bin/bash\nprintf "%s\\0" "$@" > "$ARGUMENTS_FILE"\n')
     uvx.chmod(0o755)
     arguments = tmp_path / "arguments"
+    injection_marker = tmp_path / "executed"
     (tmp_path / "vendor_example").touch()
     env = {
         **os.environ,
         **{f"ROSCHEMA_{name.upper()}": value for name, value in inputs.items()},
         "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
         "ARGUMENTS_FILE": str(arguments),
+        "INJECTION_MARKER": str(injection_marker),
     }
     result = subprocess.run(
         ["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
+    assert not injection_marker.exists(), "Action executed shell code from an input"
     actual = arguments.read_bytes().decode().split("\0")[:-1]
     expected = [
         "--from",
