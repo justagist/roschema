@@ -140,8 +140,9 @@ def finalize_findings(
             continue
         finding = replace(finding, severity=severity)
         # An opt-in rule (off by default, like RS060) is reported once enabled
-        # whatever the level; every other rule stays within the selected level.
-        if default != "off":
+        # whatever the level, as is a rule with no levels (RS200); every other
+        # rule stays within the selected level.
+        if default != "off" and finding.levels:
             level = config.effective_level(pkg, cli_level, default_level)
             if not (set(finding.levels) & LEVEL_BUNDLES[level]):
                 if dropped is not None:
@@ -149,7 +150,9 @@ def finalize_findings(
                 continue
         if finding.rule in finding.inline_ignores:
             finding = replace(finding, suppressed=True, suppressed_reason="an inline ignore")
-        elif (reason := config.allow_reason(finding)) is not None:
+        # An unused allowlist entry (RS200) has the entry's own target, so it
+        # would otherwise excuse itself.
+        elif finding.rule != "RS200" and (reason := config.allow_reason(finding)) is not None:
             finding = replace(
                 finding, suppressed=True, suppressed_reason=f"the allowlist: {reason}"
             )

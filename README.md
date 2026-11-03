@@ -321,6 +321,11 @@ package without listing every member: `*` matches any run of characters
 example `"my_msgs/msg/State*"` covers `State` itself and all its members, and
 `"vendor_msgs/*"` everything in that package.
 
+`check` warns (RS200) about an allowlist entry or inline check ignore that no
+longer matches any finding, e.g. once the baseline has moved past the break, so
+stale suppressions do not hide a later one. Remove the entry, or set
+`RS200 = "off"` in `[check.rules]`.
+
 ## Output
 
 **Text** (the default) starts with what was compared, groups findings by

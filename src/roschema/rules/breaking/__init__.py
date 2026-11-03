@@ -24,6 +24,7 @@ from .rs030_default_changed import RULE as RS030
 from .rs040_interface_removed import RULE as RS040
 from .rs060_message_version import RULE as RS060
 from .rs110_transitive import RULE as RS110
+from .rs200_unused_suppression import RULE as RS200
 
 ALL_BREAKING_RULES: tuple[Rule, ...] = (
     RS001,
@@ -41,4 +42,5 @@ ALL_BREAKING_RULES: tuple[Rule, ...] = (
     RS040,
     RS060,
     RS110,
+    RS200,
 )

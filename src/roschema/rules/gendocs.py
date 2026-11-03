@@ -66,7 +66,7 @@ def _render_overview() -> str:
         "|---|---|---|---|",
     ]
     for rule in ALL_BREAKING_RULES:
-        levels = ", ".join(rule.levels) or "n/a"
+        levels = ", ".join(rule.levels) or "any"
         lines.append(
             f"| [{rule.id}](#{_anchor(rule)}) | {rule.title} | {levels} | "
             f"{rule.default_severity.value} |"
@@ -91,7 +91,7 @@ def _render_breaking(rule: Rule) -> str:
         "",
         rule.description,
         "",
-        f"- Levels: {', '.join(rule.levels) or 'n/a'}",
+        f"- Levels: {', '.join(rule.levels) or 'any'}",
         f"- Default severity: {rule.default_severity.value}",
         "",
         f"*Rationale:* {rule.rationale}",
