@@ -61,6 +61,7 @@ class Config:
     workspace: ScopeConfig = field(default_factory=ScopeConfig)
     packages: dict[str, ScopeConfig] = field(default_factory=dict)
     lint_rules: dict[str, str] = field(default_factory=dict)
+    package_lint_rules: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def effective_severity(self, rule_id: str, package: str, default: str) -> str:
         """Severity for a rule in a package: package > workspace > default."""
@@ -140,7 +141,9 @@ def finalize_findings(
     return out
 
 
-def finalize_lint(findings: list[Finding], config: Config) -> list[Finding]:
+def finalize_lint(
+    findings: list[Finding], config: Config, cli_rules: dict[str, str] | None = None
+) -> list[Finding]:
     """Apply ``[lint.rules]`` severities and inline suppression to lint findings.
 
     Lint has no baseline, so there is no level filter or allowlist; only severity
@@ -148,7 +151,11 @@ def finalize_lint(findings: list[Finding], config: Config) -> list[Finding]:
     """
     out: list[Finding] = []
     for finding in findings:
-        severity = config.lint_rules.get(finding.rule, finding.severity)
+        severity = config.package_lint_rules.get(finding.package, {}).get(
+            finding.rule, config.lint_rules.get(finding.rule, finding.severity)
+        )
+        if cli_rules is not None:
+            severity = cli_rules.get(finding.rule, severity)
         if severity == "off":
             continue
         finding = replace(finding, severity=severity)
@@ -175,14 +182,18 @@ def load_config(
     """
     workspace_scope, lint_rules = _load_workspace(root, config_path)
     package_configs: dict[str, ScopeConfig] = {}
+    package_lint_rules: dict[str, dict[str, str]] = {}
     for pkg in packages:
         if not pkg.path:
             continue
         pkg_toml = root / pkg.path / "roschema.toml"
         if pkg_toml.is_file():
-            package_configs[pkg.name] = _parse_scope(_read_toml(pkg_toml))
+            package_configs[pkg.name], package_lint_rules[pkg.name] = _parse_loaded(
+                _read_toml(pkg_toml)
+            )
     return Config(
-        workspace=workspace_scope, packages=package_configs, lint_rules=lint_rules
+        workspace=workspace_scope, packages=package_configs, lint_rules=lint_rules,
+        package_lint_rules=package_lint_rules,
     )
 
 

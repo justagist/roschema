@@ -6,7 +6,6 @@ import json
 import os
 import posixpath
 from collections.abc import Callable
-from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -324,13 +323,12 @@ def lint(
         if not isinstance(res.vfs, RealFS):
             raise VfsError("lint target must be a directory or workspace")
         config = load_config(res.vfs.root, res.packages, config_path)
-        config = replace(config, lint_rules={**config.lint_rules, **overrides})
         interfaces = load_interfaces(res.vfs, apply_exclude(res.packages, exclude or []))
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    findings = finalize_lint(lint_interfaces(interfaces), config)
+    findings = finalize_lint(lint_interfaces(interfaces), config, overrides)
     if fmt == "json":
         typer.echo(json.dumps(build_json(findings), indent=2))
     elif fmt == "github":

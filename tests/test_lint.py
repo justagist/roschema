@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+
+import pytest
 from typer.testing import CliRunner
 
 from _helpers import write_package
@@ -120,3 +123,21 @@ def test_cli_lint_rules_rejects_bad_input(tmp_path):
     write_package(tmp_path, "p", msgs={"Good": "int32 good_field  # doc\n"})
     assert runner.invoke(app, ["lint", str(tmp_path), "--rules", "RSL999=warn"]).exit_code == 2
     assert runner.invoke(app, ["lint", str(tmp_path), "--rules", "RSL001=loud"]).exit_code == 2
+
+
+@pytest.mark.parametrize("package_severity,options,expected", [
+    ("off", [], {"other": "warn"}),
+    ("error", [], {"demo": "error", "other": "warn"}),
+    ("error", ["--rules", "RSL001=off"], {}),
+])
+def test_package_lint_precedence(tmp_path, package_severity, options, expected):
+    for package in ("demo", "other"):
+        write_package(tmp_path, package, msgs={"T": "int32 BadField # doc\n"})
+    (tmp_path / "roschema.toml").write_text('[lint.rules]\nRSL001 = "warn"\n')
+    (tmp_path / "demo" / "roschema.toml").write_text(
+        f'[lint.rules]\nRSL001 = "{package_severity}"\n'
+    )
+    result = runner.invoke(app, ["lint", str(tmp_path), "--format", "json", *options])
+    assert result.exit_code == (1 if "error" in expected.values() else 0)
+    findings = json.loads(result.stdout)["findings"]
+    assert {f["package"]: f["severity"] for f in findings} == expected
