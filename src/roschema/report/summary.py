@@ -94,7 +94,8 @@ def summarize(findings: list[Finding], changes: Sequence[Change] = ()) -> Summar
 
     by_package: dict[str, list[Finding]] = {}
     for finding in reported:
-        by_package.setdefault(finding.package, []).append(finding)
+        if finding.levels:  # level-less findings (RS200) say nothing about the release
+            by_package.setdefault(finding.package, []).append(finding)
     added = Counter(c.package for c in changes if c.reason in ADDED)
     advisories = tuple(
         _advise(package, by_package.get(package, []), added[package])

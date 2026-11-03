@@ -90,6 +90,9 @@ roschema check --against origin/main
 # check before pushing, against the last commit
 roschema check --against HEAD
 
+# only this branch's changes, even if main has moved on since it was cut
+roschema check --against origin/main...
+
 # scope to one package, or a subtree with a glob (and exclude vendored packages)
 roschema check src/my_msgs --against origin/main
 roschema check 'src/**' --against origin/main --exclude 'vendor_*'
@@ -145,6 +148,12 @@ includes colcon's `build/`, `install/` and `log/` directories.
 MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is detected
 automatically. Initialised git submodules are compared at the commit the
 baseline records for them.
+
+`REF...` (three dots, as in `git diff REF...`) compares against the merge base
+of `REF` and `HEAD`, the commit the branch started from. Without it, interfaces
+added on `main` after a branch was cut look removed on the branch. In a pull
+request's CI, `actions/checkout` already builds the merge with the base branch,
+so a plain `origin/main` is enough there.
 
 Every report says how much was compared, for example `compared 12 interface(s)
 in 3 package(s); 1 new (my_msgs/msg/Status)`. New interfaces are not findings,
@@ -306,6 +315,18 @@ This works for lint rules too.
 `reason` is required. `rules` limits the entry to those rule IDs; omit it to
 allow every rule for that target.
 
+A target may be a glob, to allow a planned break across a whole interface or
+package without listing every member: `*` matches any run of characters
+(including `/` and `.`), `?` one character and `[abc]` one of a set. For
+example `"my_msgs/msg/State.*"` covers every member of `State`, and
+`"vendor_msgs/*"` everything in that package. A glob matches every target that
+fits it: `"my_msgs/msg/State*"` covers `StateStamped` too.
+
+`check` warns (RS200) about an allowlist entry or inline check ignore that no
+longer matches any finding, e.g. once the baseline has moved past the break, so
+stale suppressions do not hide a later one. Remove the entry, or set
+`RS200 = "off"` in `[check.rules]`.
+
 ## Output
 
 **Text** (the default) starts with what was compared, groups findings by
@@ -351,7 +372,7 @@ of a step.
       "old": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
       "new": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
       "suppressed": false,
-      "help_uri": "https://github.com/justagist/roschema/blob/v0.4.0/docs/rules.md#rs003----field-type-changed"
+      "help_uri": "https://github.com/justagist/roschema/blob/v0.5.0/docs/rules.md#rs003----field-type-changed"
     }
   ],
   "summary": {
@@ -404,13 +425,13 @@ jobs:
   interfaces:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0            # needed for the git-ref baseline
       - uses: justagist/roschema/action@main
         with:
           against: origin/${{ github.base_ref }}
-          # version: "roschema==0.4.0"   # pin a release for reproducible results
+          # version: "roschema==0.5.0"   # pin a release for reproducible results
           # level: source
           # deep: "true"
           # warnings-as-errors: "true"
@@ -433,6 +454,28 @@ By default the Action installs the latest roschema release on every run, so new
 rules can change results without any change on your side. Set `version` to pin
 a release instead. A lockfile or directory baseline needs no `fetch-depth: 0`,
 because it is part of the checkout.
+
+## pre-commit
+
+roschema ships [pre-commit](https://pre-commit.com/) hooks. Each runs on the
+whole repository: `roschema-check` on every commit, so a commit that only
+deletes an interface is checked too, and the others when an interface file is
+staged.
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/justagist/roschema
+    rev: v0.5.0
+    hooks:
+      - id: roschema-check   # staged changes against the last commit
+      - id: roschema-lint
+      - id: roschema-fmt     # rewrites files; re-stage them and commit again
+```
+
+`args` replaces a hook's arguments, e.g.
+`args: [--against, HEAD, --allow-empty, --level, wire]` for `roschema-check`.
+`--allow-empty` lets the commit that adds the first interfaces pass.
 
 ## Troubleshooting
 

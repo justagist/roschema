@@ -121,6 +121,21 @@ def test_package_allowlist_reason_takes_precedence():
     assert cfg.allow_reason(_finding("RS001")) == "package reason"
 
 
+@pytest.mark.parametrize(
+    ("target", "allowed"),
+    [
+        ("demo/msg/T*", True),
+        ("demo/*", True),
+        ("demo/msg/T.?", True),
+        ("demo/msg/U*", False),
+        ("demo/msg/T", False),  # an exact target names only the interface itself
+    ],
+)
+def test_allowlist_glob_targets(target, allowed):
+    cfg = Config(workspace=ScopeConfig(allow=(AllowEntry(target, (), "planned 2.0 break"),)))
+    assert (cfg.allow_reason(_finding("RS001")) is not None) is allowed
+
+
 def test_finalize_allowlist_suppression():
     cfg = Config(
         workspace=ScopeConfig(

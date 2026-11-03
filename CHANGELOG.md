@@ -3,6 +3,16 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-03
+
+### Added
+
+- `--against REF...` compares against the merge base of `REF` and `HEAD`, so a
+  branch that is behind `main` is not blamed for `main`'s newer changes.
+- Allowlist targets may be globs, e.g. `"my_msgs/msg/State.*"`.
+- RS200 warns about allowlist entries and inline ignores that match no finding.
+- pre-commit hooks: `roschema-check`, `roschema-lint` and `roschema-fmt`.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added

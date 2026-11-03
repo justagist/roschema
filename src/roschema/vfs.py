@@ -286,3 +286,26 @@ def rev_parse_verify(repo_root: str | Path, ref: str) -> str:
     except subprocess.CalledProcessError as exc:
         raise VfsError(f"not a valid git ref: {ref}") from exc
     return proc.stdout.strip()
+
+
+def merge_base(repo_root: str | Path, ref: str) -> str:
+    """Return the SHA of the best common ancestor of ``ref`` and ``HEAD``.
+
+    Raises:
+        VfsError: If ``ref`` does not exist or shares no history with ``HEAD``.
+    """
+    rev_parse_verify(repo_root, ref)
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), "merge-base", ref, "HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise VfsError(
+            f"no merge base between {ref} and HEAD; a shallow clone needs its full "
+            "history (e.g. fetch-depth: 0)"
+        ) from exc
+    return proc.stdout.strip()

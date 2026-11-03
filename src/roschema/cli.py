@@ -52,6 +52,7 @@ from .report import (
 from .report.changes import Change, additions, by_location, suppressed_changes
 from .rules import Finding, all_lint_rules, all_rules, evaluate, lint_interfaces
 from .rules.gendocs import docs_url, find_rule, render_rule
+from .suppressions import unused_suppressions
 from .vfs import GitTreeFS, RealFS, VfsError, git_toplevel
 
 app = typer.Typer(
@@ -400,13 +401,19 @@ def _compute(
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
     events = diff_interfaces(old_ifaces, new_ifaces)
     dropped: list[tuple[Finding, str]] = []
-    findings = finalize_findings(evaluate(events), config, level, dropped=dropped)
+    raw = evaluate(events)
+    findings = finalize_findings(raw, config, level, dropped=dropped)
     deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
     if deep_packages:
-        transitive = transitive_findings(new_ifaces, findings)
-        findings += finalize_findings(
-            [f for f in transitive if f.package in deep_packages], config, level, dropped=dropped
-        )
+        transitive = [
+            f for f in transitive_findings(new_ifaces, findings) if f.package in deep_packages
+        ]
+        raw += transitive
+        findings += finalize_findings(transitive, config, level, dropped=dropped)
+    checked = {*old_ifaces, *new_ifaces}
+    discovered = {ref.key for pkg in (*old_packages, *new_res.packages) for ref in pkg.interfaces}
+    unused = unused_suppressions(raw, config, new_ifaces, checked, discovered - checked)
+    findings += finalize_findings(unused, config, level, dropped=dropped)
     return _Result(
         findings=findings,
         new_source=new_res.source,
