@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 
 import pytest
 from typer.testing import CliRunner
@@ -209,6 +210,31 @@ def test_text_output_keeps_long_lines_whole(tmp_path):
     write_package(deep / "new", "my_msgs", msgs={"Pose": "float64 theta\n"})
     result = runner.invoke(app, ["check", str(deep / "new"), "--against", str(deep / "old")])
     assert f"checking path:{deep / 'new'}  against  path:{deep / 'old'}" in result.stdout
+
+
+def test_commands_never_use_the_locale_encoding(tmp_path):
+    """Non-ASCII comments must work regardless of locale (e.g. cp1252 on Windows)."""
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo, "my_msgs", msgs={"P": "float64 x  # metres, ±0.5 °\n"})
+    git_commit_all(repo, "v1")
+    (repo / "my_msgs" / "msg" / "P.msg").write_text("float64  x  # metres, ±0.5 °\n", "utf-8")
+    lock = tmp_path / "roschema.lock"
+    for args in (
+        ["check", "--against", "HEAD"],
+        ["lint"],
+        ["fmt"],
+        ["freeze", "-o", str(lock)],
+        ["check", "--against", str(lock)],
+    ):
+        result = subprocess.run(
+            [sys.executable, "-X", "warn_default_encoding", "-W", "error::EncodingWarning",
+             "-m", "roschema.cli", *args],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        assert result.returncode == 0, (args, result.stderr)
 
 
 def test_baseline_git_ref_shadows_dir_with_note(tmp_path, monkeypatch):

@@ -453,7 +453,7 @@ def fmt(
                 if formatted != original:
                     changed.append(ref.path)
                     if not check_only:
-                        (res.vfs.root / ref.path).write_text(formatted)
+                        (res.vfs.root / ref.path).write_text(formatted, encoding="utf-8")
     except (VfsError, ParseError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
@@ -493,7 +493,7 @@ def freeze(
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    output.write_text(build_lock(interfaces, __version__))
+    output.write_text(build_lock(interfaces, __version__), encoding="utf-8")
     console.print(f"wrote {len(interfaces)} interface(s) to {output}")
 
 

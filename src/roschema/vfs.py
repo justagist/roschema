@@ -47,7 +47,7 @@ class RealFS:
 
     def read_text(self, path: str) -> str:
         try:
-            return (self.root / path).read_text()
+            return (self.root / path).read_text(encoding="utf-8")
         except OSError as exc:
             raise VfsError(f"cannot read {path}: {exc}") from exc
 
@@ -241,6 +241,7 @@ class GitTreeFS:
                 ["git", "-C", str(self.repo_root), *args],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 check=True,
             )
         except FileNotFoundError as exc:  # git not installed
@@ -259,6 +260,7 @@ def git_toplevel(path: str | Path) -> Path | None:
             ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
     except (FileNotFoundError, subprocess.CalledProcessError):
@@ -277,6 +279,7 @@ def rev_parse_verify(repo_root: str | Path, ref: str) -> str:
             ["git", "-C", str(repo_root), "rev-parse", "--verify", f"{ref}^{{commit}}"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
     except FileNotFoundError as exc:

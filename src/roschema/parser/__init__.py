@@ -30,7 +30,7 @@ def parse_file(path: str | Path) -> InterfaceFile:
     if kind is None:
         raise ParseError(f"unsupported extension {p.suffix!r}", str(p), 1, 1)
     package = p.parent.parent.name
-    return parse_text(p.read_text(), str(p), package, p.stem, kind)
+    return parse_text(p.read_text(encoding="utf-8"), str(p), package, p.stem, kind)
 
 
 __all__ = ["ParseError", "parse_file", "parse_text"]

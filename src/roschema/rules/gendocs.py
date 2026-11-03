@@ -79,11 +79,11 @@ def main(argv: list[str] | None = None) -> int:
     rendered = render_docs()
     if not argv:
         _DOCS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _DOCS_PATH.write_text(rendered)
+        _DOCS_PATH.write_text(rendered, encoding="utf-8")
         print(f"wrote {_DOCS_PATH}")
         return 0
     if argv == ["--check"]:
-        if _DOCS_PATH.is_file() and _DOCS_PATH.read_text() == rendered:
+        if _DOCS_PATH.is_file() and _DOCS_PATH.read_text(encoding="utf-8") == rendered:
             return 0
         print(
             "docs/rules.md is stale; regenerate with `python -m roschema.rules.gendocs`",
