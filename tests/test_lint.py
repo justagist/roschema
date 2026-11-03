@@ -141,3 +141,19 @@ def test_package_lint_precedence(tmp_path, package_severity, options, expected):
     assert result.exit_code == (1 if "error" in expected.values() else 0)
     findings = json.loads(result.stdout)["findings"]
     assert {f["package"]: f["severity"] for f in findings} == expected
+
+
+@pytest.mark.parametrize("field_type,unbounded", [
+    ("string[4]", True), ("string[<=4]", True),
+    ("wstring[4]", True), ("wstring[<=4]", True),
+    ("string<=8[]", True), ("wstring<=8[]", True),
+    ("string<=8[4]", False), ("wstring<=8[<=4]", False),
+    ("int32[4]", False), ("int32[<=4]", False),
+])
+def test_rsl006_checks_string_elements_independently(field_type, unbounded):
+    findings = finalize_lint(
+        _lint(f"{field_type} names # doc\n"), Config(lint_rules={"RSL006": "error"})
+    )
+    assert [(f.rule, f.severity) for f in findings] == (
+        [("RSL006", "error")] if unbounded else []
+    )
