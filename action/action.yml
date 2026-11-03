@@ -30,7 +30,7 @@ inputs:
   version:
     description: >-
       roschema requirement for uvx. Unpinned runs the latest release; pin it
-      (e.g. "roschema==0.1.3") for reproducible results.
+      (e.g. "roschema==0.2.0") for reproducible results.
     default: roschema
 
 runs:
