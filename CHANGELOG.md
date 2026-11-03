@@ -12,6 +12,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - `check --verbose` and `bag-check --verbose` list the changes that are not
   reported (added, outside the level, rule off or suppressed) with the reason;
   JSON adds a `changes` array.
+- `--summary FILE` appends a Markdown report; the Action writes it to the job
+  summary, so every finding and the semver advice are visible even when GitHub
+  truncates the annotations.
 
 ### Changed
 

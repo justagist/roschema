@@ -78,6 +78,9 @@ runs:
         if [ "$ROSCHEMA_WARNINGS_AS_ERRORS" = "true" ]; then
           args+=(--warnings-as-errors)
         fi
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          args+=(--summary "$GITHUB_STEP_SUMMARY")
+        fi
         read -r -a excludes <<< "${ROSCHEMA_EXCLUDE//$'\n'/ }"
         for glob in "${excludes[@]}"; do
           args+=(--exclude "$glob")

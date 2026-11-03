@@ -123,7 +123,7 @@ roschema explain RS004
 ```
 roschema check [TARGET] --against BASELINE [--level LEVEL] [--format text|json|github]
                [--deep | --no-deep] [--exit-zero] [--warnings-as-errors] [--allow-empty]
-               [--verbose] [--config PATH] [--exclude GLOB]
+               [--verbose] [--summary FILE] [--config PATH] [--exclude GLOB]
 ```
 
 `TARGET` selects what to check; omit it to check every interface package below
@@ -219,7 +219,7 @@ same. Comparison ignores it.
 ```
 roschema bag-check BAG.mcap [TARGETS...] [--level LEVEL] [--config PATH]
                    [--format text|json|github] [--exit-zero] [--warnings-as-errors]
-                   [--verbose] [--exclude GLOB]
+                   [--verbose] [--summary FILE] [--exclude GLOB]
 ```
 
 Needs the `bag` extra (`uv tool install 'roschema[bag]'`).
@@ -326,6 +326,13 @@ Comment-only edits are not changes, so they never appear.
 **`--format github`** prints what was compared, then emits `::error`/`::warning`
 workflow commands, which GitHub shows as annotations on the PR diff.
 
+**`--summary FILE`** appends a Markdown report to `FILE` as well, whatever the
+`--format`: what was compared, a table of findings linked to the rule
+reference, the semver advice, and the unreported changes in a collapsed
+section. Pointed at `$GITHUB_STEP_SUMMARY`, it becomes the job summary, which
+matters because GitHub shows only the first 10 error and 10 warning annotations
+of a step.
+
 **`--format json`** emits a stable document (`version: 1`):
 
 ```json
@@ -386,7 +393,8 @@ turns `1` into `0` for `check`, `bag-check` and `lint`; tool errors still exit
 ## GitHub Action
 
 A composite Action runs `roschema check` on the runner (no setup needed) and
-posts the findings as annotations on the PR diff:
+posts the findings as annotations on the PR diff, with a full report (findings,
+semver advice and unreported changes) as the job summary:
 
 ```yaml
 # .github/workflows/interfaces.yml

@@ -40,7 +40,15 @@ from .ir import InterfaceFile
 from .loader import load_interfaces
 from .mcap_fs import McapTypeFS
 from .parser import ParseError
-from .report import Coverage, build_github, build_json, coverage, render_lint, render_text
+from .report import (
+    Coverage,
+    build_github,
+    build_json,
+    build_markdown,
+    coverage,
+    render_lint,
+    render_text,
+)
 from .report.changes import Change, additions, by_location, suppressed_changes
 from .rules import Finding, all_lint_rules, all_rules, evaluate, lint_interfaces
 from .rules.gendocs import docs_url, find_rule, render_rule
@@ -154,6 +162,13 @@ def check(
             "or suppressed) and why.",
         ),
     ] = False,
+    summary_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--summary",
+            help="Also append a Markdown report to this file, e.g. $GITHUB_STEP_SUMMARY.",
+        ),
+    ] = None,
     allow_empty: Annotated[
         bool,
         typer.Option(
@@ -194,6 +209,8 @@ def check(
             "pass --allow-empty if that is expected",
         )
     _emit(result, fmt, verbose)
+    if summary_path is not None:
+        _write_summary(result, summary_path)
     _exit_for(result.findings, exit_zero, warnings_as_errors)
 
 
@@ -236,6 +253,13 @@ def bag_check(
             "or suppressed) and why.",
         ),
     ] = False,
+    summary_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--summary",
+            help="Also append a Markdown report to this file, e.g. $GITHUB_STEP_SUMMARY.",
+        ),
+    ] = None,
     exclude: Annotated[
         list[str] | None,
         typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
@@ -283,6 +307,8 @@ def bag_check(
     )
     _require_baseline(result.coverage, "the bag", "check the --exclude patterns")
     _emit(result, fmt, verbose)
+    if summary_path is not None:
+        _write_summary(result, summary_path)
     _exit_for(result.findings, exit_zero, warnings_as_errors)
 
 
@@ -430,6 +456,15 @@ def _exit_for(findings: list[Finding], exit_zero: bool, warnings_as_errors: bool
     failing = {"error", "warn"} if warnings_as_errors else {"error"}
     has_failure = any(f.severity in failing and not f.suppressed for f in findings)
     raise typer.Exit(code=1 if has_failure else 0)
+
+
+def _write_summary(result: _Result, path: Path) -> None:
+    """Append the Markdown report to ``path``; GitHub collects step summaries this way."""
+    report = build_markdown(
+        result.findings, result.new_source, result.old_source, result.coverage, result.changes
+    )
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(report)
 
 
 def _emit(result: _Result, fmt: str, verbose: bool) -> None:

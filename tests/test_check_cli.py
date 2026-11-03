@@ -147,6 +147,17 @@ def test_check_verbose_json_lists_changes(tmp_path):
     ]
 
 
+def test_check_summary_appends_markdown(tmp_path):
+    args = _unreported_sample(tmp_path)
+    summary = tmp_path / "summary.md"
+    summary.write_text("earlier step\n")
+    result = runner.invoke(app, [*args, "--format", "json", "--summary", str(summary)])
+    assert result.exit_code == 0
+    text = summary.read_text()
+    assert text.startswith("earlier step\n## roschema\n")
+    assert "**No breaking changes found.**" in text
+
+
 def test_check_empty_baseline_is_an_error(tmp_path):
     repo = make_git_repo(tmp_path / "repo")
     (repo / "README").write_text("no interfaces yet\n")
