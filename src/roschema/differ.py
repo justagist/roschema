@@ -233,11 +233,14 @@ def _classify_type_change(old: Field, new: Field) -> ChangeType | None:
     # A fixed array's size is part of the wire layout: any change is a type change.
     if o.array_kind is ArrayKind.FIXED and o.array_bound != n.array_bound:
         return ChangeType.FIELD_TYPE_CHANGED
-    if o.array_kind is ArrayKind.BOUNDED and o.array_bound != n.array_bound:
-        return _bound_direction(o.array_bound, n.array_bound)
-    if o.string_bound != n.string_bound:
-        return _bound_direction(o.string_bound, n.string_bound)
-    return None
+    bounds = [(o.string_bound, n.string_bound)]
+    if o.array_kind is ArrayKind.BOUNDED:
+        bounds.append((o.array_bound, n.array_bound))
+    changes = [_bound_direction(old, new) for old, new in bounds if old != new]
+    # A tightening must not be hidden by a simultaneous capacity increase.
+    if ChangeType.FIELD_BOUND_TIGHTENED in changes:
+        return ChangeType.FIELD_BOUND_TIGHTENED
+    return changes[0] if changes else None
 
 
 def _default_changed(old: Field, new: Field) -> bool:

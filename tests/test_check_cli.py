@@ -180,3 +180,12 @@ def test_check_missing_mcap_baseline_errors(tmp_path):
         app, ["check", str(tmp_path / "new"), "--against", "baseline.mcap"]
     )
     assert result.exit_code == 2  # file does not exist
+
+
+def test_check_mixed_bound_changes_fail(tmp_path):
+    old, new = tmp_path / "old", tmp_path / "new"
+    write_package(old, "my_msgs", msgs={"T": "string<=64[<=4] names\n"})
+    write_package(new, "my_msgs", msgs={"T": "string<=8[<=16] names\n"})
+    result = runner.invoke(app, ["check", str(new), "--against", str(old)])
+    assert result.exit_code == 1
+    assert "RS007" in result.stdout
