@@ -427,6 +427,8 @@ def test_bag_check_with_everything_excluded_is_an_error(tmp_path):
     result = runner.invoke(app, ["bag-check", str(bag), str(ws), "--exclude", "*"])
     assert result.exit_code == 2
     assert "the bag has no interfaces" in result.output
+    assert "--exclude" in result.output
+    assert "--allow-empty" not in result.output
 
 
 def test_bag_check_github_attaches_unlocated_findings_to_interface_file(tmp_path):

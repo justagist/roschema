@@ -150,7 +150,10 @@ def check(
             f"[dim]note: {against!r} matched a git ref; "
             f"use './{against}' to compare against the directory instead.[/dim]"
         )
-    _require_baseline(cov, f"the baseline ({old_source})", allow_empty)
+    if not allow_empty:
+        _require_baseline(
+            cov, f"the baseline ({old_source})", "pass --allow-empty if that is expected"
+        )
     _emit(findings, fmt, new_source, old_source, cov, prefix, files)
     _exit_for(findings, exit_zero, warnings_as_errors)
 
@@ -225,7 +228,7 @@ def bag_check(
         evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level, BAG_DEFAULT_LEVEL
     )
     cov = coverage(old_ifaces, new_ifaces)
-    _require_baseline(cov, "the bag", allow_empty=False)
+    _require_baseline(cov, "the bag", "check the --exclude patterns")
     files = {key: iface.source_file for key, iface in new_ifaces.items()}
     _emit(findings, fmt, new_source, old_res.source, cov, interface_files=files)
     _exit_for(findings, exit_zero, warnings_as_errors)
@@ -351,16 +354,15 @@ def _display_prefix(target_dir: Path) -> str:
     return "" if rel == "." else rel
 
 
-def _require_baseline(cov: Coverage, baseline: str, allow_empty: bool) -> None:
-    """Exit 2 when the baseline is empty, unless allowed.
+def _require_baseline(cov: Coverage, baseline: str, hint: str) -> None:
+    """Exit 2 when the baseline is empty, naming ``baseline`` and how to resolve it.
 
     With no baseline interfaces every current one looks added, which is never a
     finding, so the check would pass without comparing anything.
     """
-    if cov.baseline_empty and not allow_empty:
+    if cov.baseline_empty:
         err_console.print(
-            f"[red]error:[/red] {baseline} has no interfaces, so nothing was compared; "
-            "pass --allow-empty if that is expected"
+            f"[red]error:[/red] {baseline} has no interfaces, so nothing was compared; {hint}"
         )
         raise typer.Exit(code=2)
 
