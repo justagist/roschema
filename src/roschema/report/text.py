@@ -5,20 +5,25 @@ from __future__ import annotations
 from rich.console import Console
 
 from ..rules import LEVEL_LABEL, Finding
-from .summary import summarize
+from .summary import Coverage, summarize
 
 _SEVERITY_STYLE = {"error": "red", "warn": "yellow"}
 _BUMP_STYLE = {"MAJOR": "red", "MINOR": "yellow", "PATCH": "green"}
 
 
 def render_text(
-    findings: list[Finding], console: Console, new_source: str, old_source: str
+    findings: list[Finding],
+    console: Console,
+    new_source: str,
+    old_source: str,
+    coverage: Coverage,
 ) -> None:
-    """Render findings to ``console`` with a summary and semver advisories.
+    """Render findings to ``console`` with coverage, a summary and semver advisories.
 
     Suppressed findings are not listed individually but are counted.
     """
     console.print(f"[bold]checking[/bold] {new_source}  [dim]against[/dim]  {old_source}")
+    console.print(f"[dim]{coverage.describe()}[/dim]")
     reported = [f for f in findings if not f.suppressed]
 
     if not reported:

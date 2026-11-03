@@ -296,5 +296,11 @@
     "advisories": {
       "demo_msgs": "MAJOR"
     }
+  },
+  "coverage": {
+    "packages": 1,
+    "compared": 16,
+    "target_only": 0,
+    "baseline_only": 1
   }
 }

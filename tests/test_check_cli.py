@@ -59,6 +59,34 @@ def test_check_warning_only_exits_0(tmp_path):
     assert "RS008" in result.stdout
 
 
+def test_check_reports_coverage(tmp_path):
+    write_package(tmp_path / "old", "my_msgs", msgs={"A": "int32 a\n", "B": "int32 b\n"})
+    write_package(tmp_path / "new", "my_msgs", msgs={"A": "int32 a\n", "C": "int32 c\n"})
+    write_package(tmp_path / "new", "other_msgs", msgs={"D": "int32 d\n"})
+    result = runner.invoke(
+        app, ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
+    )
+    assert (
+        "compared 1 interface(s) in 2 package(s); 2 only in the target, 1 only in the baseline"
+        in result.stdout
+    )
+
+
+def test_check_empty_baseline_is_an_error(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    (repo / "README").write_text("no interfaces yet\n")
+    git_commit_all(repo, "v1")
+    write_package(repo, "my_msgs", msgs={"Pose": "float32 theta\n"})
+
+    result = runner.invoke(app, ["check", str(repo), "--against", "HEAD"])
+    assert result.exit_code == 2
+    assert "the baseline (git:HEAD) has no interfaces" in result.output
+
+    allowed = runner.invoke(app, ["check", str(repo), "--against", "HEAD", "--allow-empty"])
+    assert allowed.exit_code == 0
+    assert "compared 0 interface(s) in 1 package(s); 1 only in the target" in allowed.stdout
+
+
 def test_check_exit_zero_flag(tmp_path):
     write_package(tmp_path / "old", "my_msgs", msgs={"Pose": "float32 theta\n"})
     write_package(tmp_path / "new", "my_msgs", msgs={"Pose": "float64 theta\n"})
@@ -115,7 +143,8 @@ def test_github_unlocated_findings_use_interface_file(tmp_path):
         app, ["check", str(repo / "src" / "pkg"), "--against", "HEAD", "--format", "github"]
     )
     assert result.exit_code == 1
-    lines = {line.split("::")[1].split(",title=")[1]: line for line in result.stdout.splitlines()}
+    annotations = [line for line in result.stdout.splitlines() if line.startswith("::")]
+    lines = {line.split("::")[1].split(",title=")[1]: line for line in annotations}
     assert lines["RS001"].startswith("::error file=src/pkg/msg/A.msg,title=RS001::")
     assert lines["RS004"].startswith("::error file=src/pkg/msg/A.msg,title=RS004::")
 

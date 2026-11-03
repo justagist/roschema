@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from ..rules import Finding
-from .summary import summarize
+from .summary import Coverage, summarize
 
 SCHEMA_VERSION = 1
 
 
-def build_json(findings: list[Finding], *, advisories: bool = True) -> dict[str, object]:
+def build_json(
+    findings: list[Finding], *, advisories: bool = True, coverage: Coverage | None = None
+) -> dict[str, object]:
     """Build the JSON-serialisable report document.
 
-    ``advisories`` adds per-package semver advice, which only means something
-    for a comparison against a baseline (not for lint).
+    ``advisories`` adds per-package semver advice and ``coverage`` the interface
+    counts; both only mean something for a comparison against a baseline (not
+    for lint).
     """
     summary = summarize(findings)
     counts: dict[str, object] = {
@@ -23,11 +26,19 @@ def build_json(findings: list[Finding], *, advisories: bool = True) -> dict[str,
     }
     if advisories:
         counts["advisories"] = {a.package: a.bump for a in summary.advisories}
-    return {
+    doc: dict[str, object] = {
         "version": SCHEMA_VERSION,
         "findings": [_finding_dict(f) for f in findings],
         "summary": counts,
     }
+    if coverage is not None:
+        doc["coverage"] = {
+            "packages": coverage.packages,
+            "compared": coverage.compared,
+            "target_only": coverage.target_only,
+            "baseline_only": coverage.baseline_only,
+        }
+    return doc
 
 
 def _finding_dict(finding: Finding) -> dict[str, object]:

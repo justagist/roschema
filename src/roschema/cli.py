@@ -38,7 +38,7 @@ from .ir import InterfaceFile
 from .loader import load_interfaces
 from .mcap_fs import McapTypeFS
 from .parser import ParseError
-from .report import build_github, build_json, render_lint, render_text
+from .report import Coverage, build_github, build_json, coverage, render_lint, render_text
 from .rules import Finding, all_lint_rules, evaluate, lint_interfaces
 from .vfs import GitTreeFS, RealFS, VfsError, git_toplevel
 
@@ -113,6 +113,13 @@ def check(
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
+    allow_empty: Annotated[
+        bool,
+        typer.Option(
+            "--allow-empty",
+            help="Pass when the baseline has no interfaces (e.g. before any exist).",
+        ),
+    ] = False,
     exclude: Annotated[
         list[str] | None,
         typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
@@ -127,7 +134,7 @@ def check(
         raise typer.Exit(code=2)
 
     try:
-        findings, new_source, old_source, prefix, files = _compute(
+        findings, new_source, old_source, prefix, files, cov = _compute(
             target, lambda root: resolve_baseline(against, root), level, config_path, exclude, deep
         )
     except (VfsError, ParseError, ConfigError) as exc:
@@ -139,7 +146,8 @@ def check(
             f"[dim]note: {against!r} matched a git ref; "
             f"use './{against}' to compare against the directory instead.[/dim]"
         )
-    _emit(findings, fmt, new_source, old_source, prefix, files)
+    _require_baseline(cov, f"the baseline ({old_source})", allow_empty)
+    _emit(findings, fmt, new_source, old_source, cov, prefix, files)
     _exit_for(findings, exit_zero)
 
 
@@ -208,7 +216,9 @@ def bag_check(
     findings = finalize_findings(
         evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level, BAG_DEFAULT_LEVEL
     )
-    _emit(findings, fmt, new_source, old_res.source)
+    cov = coverage(old_ifaces, new_ifaces)
+    _require_baseline(cov, "the bag", allow_empty=False)
+    _emit(findings, fmt, new_source, old_res.source, cov)
     _exit_for(findings, exit_zero)
 
 
@@ -263,10 +273,11 @@ def _compute(
     config_path: Path | None,
     exclude: list[str] | None,
     deep: bool | None = None,
-) -> tuple[list[Finding], str, str, str, dict[str, str]]:
+) -> tuple[list[Finding], str, str, str, dict[str, str], Coverage]:
     """Resolve both sides, diff and finalize; the shared check pipeline.
 
-    Also returns each current interface's source file, keyed by interface.
+    Also returns each current interface's source file, keyed by interface, and
+    how many interfaces were compared.
     """
     new_res = _resolve_target(target, allow_empty_glob=True)
     if not isinstance(new_res.vfs, RealFS):
@@ -309,7 +320,8 @@ def _compute(
             [f for f in transitive if f.package in deep_packages], config, level
         )
     files = {key: iface.source_file for key, iface in new_ifaces.items()}
-    return findings, new_res.source, old_res.source, prefix, files
+    cov = coverage(old_ifaces, new_ifaces)
+    return findings, new_res.source, old_res.source, prefix, files, cov
 
 
 def _note_skipped_schemas(res: Resolution) -> None:
@@ -330,6 +342,20 @@ def _display_prefix(target_dir: Path) -> str:
     return "" if rel == "." else rel
 
 
+def _require_baseline(cov: Coverage, baseline: str, allow_empty: bool) -> None:
+    """Exit 2 when the baseline is empty, unless allowed.
+
+    With no baseline interfaces every current one looks added, which is never a
+    finding, so the check would pass without comparing anything.
+    """
+    if cov.baseline_empty and not allow_empty:
+        err_console.print(
+            f"[red]error:[/red] {baseline} has no interfaces, so nothing was compared; "
+            "pass --allow-empty if that is expected"
+        )
+        raise typer.Exit(code=2)
+
+
 def _exit_for(findings: list[Finding], exit_zero: bool) -> None:
     if exit_zero:
         raise typer.Exit(code=0)
@@ -342,16 +368,18 @@ def _emit(
     fmt: str,
     new_source: str,
     old_source: str,
+    cov: Coverage,
     display_prefix: str = "",
     interface_files: dict[str, str] | None = None,
 ) -> None:
     if fmt == "json":
-        typer.echo(json.dumps(build_json(findings), indent=2))
+        typer.echo(json.dumps(build_json(findings, coverage=cov), indent=2))
     elif fmt == "github":
+        typer.echo(cov.describe())
         for line in build_github(findings, display_prefix, interface_files):
             typer.echo(line)
     else:
-        render_text(findings, console, new_source, old_source)
+        render_text(findings, console, new_source, old_source, cov)
 
 
 @app.command()

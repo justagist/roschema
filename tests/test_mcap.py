@@ -417,6 +417,18 @@ def test_bag_check_last_target_drops_earlier_target_config(tmp_path, monkeypatch
     assert "RS003" in result.stdout
 
 
+def test_bag_check_with_everything_excluded_is_an_error(tmp_path):
+    bag = tmp_path / "rec.mcap"
+    _write_bag(bag, {"demo_msgs/msg/Pose": POSE_CONCAT})
+    ws = tmp_path / "ws"
+    write_package(ws, "demo_msgs", msgs={"Pose": POSE_V2})
+    write_package(ws, "geometry_msgs", msgs={"Point": POINT})
+
+    result = runner.invoke(app, ["bag-check", str(bag), str(ws), "--exclude", "*"])
+    assert result.exit_code == 2
+    assert "the bag has no interfaces" in result.output
+
+
 def test_mcap_without_schemas_is_a_tool_error(tmp_path):
     bag = tmp_path / "empty.mcap"
     _write_bag(bag, {})

@@ -22,6 +22,11 @@ inputs:
   deep:
     description: Resolve nested types and report transitive breakage (RS110).
     default: "false"
+  allow-empty:
+    description: >-
+      Pass when the baseline has no interfaces, e.g. on the pull request that
+      adds the first ones. Otherwise an empty baseline fails the step.
+    default: "false"
   exclude:
     description: >-
       Whitespace-separated globs of packages/interfaces to skip. Split on
@@ -49,6 +54,7 @@ runs:
         ROSCHEMA_LEVEL: ${{ inputs.level }}
         ROSCHEMA_FORMAT: ${{ inputs.format }}
         ROSCHEMA_DEEP: ${{ inputs.deep }}
+        ROSCHEMA_ALLOW_EMPTY: ${{ inputs.allow-empty }}
         ROSCHEMA_EXCLUDE: ${{ inputs.exclude }}
         ROSCHEMA_VERSION: ${{ inputs.version }}
       run: |
@@ -61,6 +67,9 @@ runs:
         fi
         if [ "$ROSCHEMA_DEEP" = "true" ]; then
           args+=(--deep)
+        fi
+        if [ "$ROSCHEMA_ALLOW_EMPTY" = "true" ]; then
+          args+=(--allow-empty)
         fi
         read -r -a excludes <<< "${ROSCHEMA_EXCLUDE//$'\n'/ }"
         for glob in "${excludes[@]}"; do

@@ -5,6 +5,16 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Reports say how many interfaces were compared, and on which side the rest
+  exist only (JSON: `coverage`).
+
+### Changed
+
+- An empty baseline is an error (exit `2`) instead of a silent pass; pass
+  `--allow-empty` (Action: `allow-empty`) when that is expected.
+
 ### Fixed
 
 - `--format github` attaches findings with no new-side location, such as a
