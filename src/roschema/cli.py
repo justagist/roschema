@@ -196,7 +196,9 @@ def _resolve_current(
         if res is not None:
             current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
     for target in targets:
-        res = resolve_target(target)
+        res = resolve_target(target, include_empty=True)
+        replaced = {pkg.name for pkg in res.packages}
+        current = {key: iface for key, iface in current.items() if iface.package not in replaced}
         current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
     source = "targets+environment" if targets else "environment (ament index)"
     return current, source

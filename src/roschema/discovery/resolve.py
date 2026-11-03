@@ -14,7 +14,11 @@ _KINDS = ("msg", "srv", "action")
 
 
 def resolve_target(
-    target: str | None, cwd: str | Path | None = None, *, allow_empty_glob: bool = False
+    target: str | None,
+    cwd: str | Path | None = None,
+    *,
+    allow_empty_glob: bool = False,
+    include_empty: bool = False,
 ) -> Resolution:
     """Resolve ``target`` following the precedence in the design brief.
 
@@ -26,6 +30,7 @@ def resolve_target(
         target: Path, package name, or ``None``.
         cwd: Override for the working directory (used in tests).
         allow_empty_glob: Defer an empty match error until the baseline is scoped.
+        include_empty: Include interface-less packages when replacing source overlays.
 
     Returns:
         A :class:`Resolution` bundling the backend, packages and a source label.
@@ -37,15 +42,23 @@ def resolve_target(
 
     if target is None:
         vfs = RealFS(base)
-        return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"workspace:{base}")
+        return Resolution(
+            vfs=vfs, packages=discover(vfs, ".", include_empty=include_empty),
+            source=f"workspace:{base}",
+        )
 
     if not os.path.isabs(target) and any(ch in target for ch in "*?["):
-        return _resolve_glob(base, target, allow_empty=allow_empty_glob)
+        return _resolve_glob(
+            base, target, allow_empty=allow_empty_glob, include_empty=include_empty
+        )
 
     path = (base / target) if not os.path.isabs(target) else Path(target)
     if path.is_dir():
         vfs = RealFS(path)
-        return Resolution(vfs=vfs, packages=discover(vfs, "."), source=f"path:{path}")
+        return Resolution(
+            vfs=vfs, packages=discover(vfs, ".", include_empty=include_empty),
+            source=f"path:{path}",
+        )
 
     ament = resolve_ament(target)
     if ament is not None:
@@ -57,7 +70,9 @@ def resolve_target(
     )
 
 
-def _resolve_glob(base: Path, pattern: str, *, allow_empty: bool = False) -> Resolution:
+def _resolve_glob(
+    base: Path, pattern: str, *, allow_empty: bool = False, include_empty: bool = False
+) -> Resolution:
     """Expand a glob target (dirs) and union the packages discovered under each.
 
     The VFS is rooted at ``base`` and package paths carry their sub-paths, so a
@@ -70,7 +85,7 @@ def _resolve_glob(base: Path, pattern: str, *, allow_empty: bool = False) -> Res
         if not match.is_dir():
             continue
         rel = match.relative_to(base).as_posix()
-        for pkg in discover(vfs, rel or "."):
+        for pkg in discover(vfs, rel or ".", include_empty=include_empty):
             seen[pkg.path] = pkg
     if not seen and not allow_empty:
         raise VfsError(f"target glob {pattern!r} matched no interface packages")

@@ -7,6 +7,8 @@ when the optional 'bag' extra is not installed).
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from typer.testing import CliRunner
 
@@ -291,3 +293,31 @@ def test_mcap_without_schemas_is_a_tool_error(tmp_path):
     result = runner.invoke(app, ["bag-check", str(bag)])
     assert result.exit_code == 2
     assert "no usable ROS schemas" in result.output
+
+
+@pytest.mark.parametrize("remaining", [{"Other": "int32 y\n"}, {}])
+def test_bag_source_package_replaces_all_installed_interfaces(tmp_path, monkeypatch, remaining):
+    bag = tmp_path / "deleted.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n", "system/msg/U": "int32 x\n"})
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo", msgs={"T": "int32 x\n"})
+    write_package(prefix / "share", "system", msgs={"U": "int32 x\n"})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    source = tmp_path / "source"
+    write_package(source, "demo", msgs=remaining)
+
+    result = runner.invoke(app, ["bag-check", str(bag), str(source), "--format", "json"])
+    assert result.exit_code == 1
+    findings = json.loads(result.stdout)["findings"]
+    assert [(f["rule"], f["interface"]) for f in findings] == [("RS040", "demo/msg/T")]
+
+
+def test_last_source_target_replaces_previous_package(tmp_path):
+    bag = tmp_path / "overlap.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n"})
+    first, second = tmp_path / "first", tmp_path / "second"
+    write_package(first, "demo", msgs={"T": "int32 x\n"})
+    write_package(second, "demo", msgs={"Other": "int32 y\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), str(first), str(second)])
+    assert result.exit_code == 1
+    assert "RS040" in result.stdout

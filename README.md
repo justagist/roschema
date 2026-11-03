@@ -168,7 +168,10 @@ definitions rather than reported as missing.
 
 Optional `TARGETS` (paths or package names) are overlaid on top of the
 environment, so a package you are editing can be checked from source instead of
-its installed copy. A bag type found in neither the environment nor any target
+its installed copy. Each source package replaces its entire installed interface
+set, so deleted source interfaces are reported as removed even when an installed
+copy remains. If targets overlap, the last target wins for that package. A bag
+type found in neither the environment nor any target
 is reported as removed (RS040). `ros2msg` schemas (including concatenated
 dependent definitions) are fully supported; `ros2idl` is a best-effort
 conversion of the msg-equivalent subset. Unsupported encodings or IDL constructs,

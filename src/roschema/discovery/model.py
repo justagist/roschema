@@ -31,7 +31,7 @@ class InterfaceRef:
 
 @dataclass(frozen=True)
 class DiscoveredPackage:
-    """A package containing at least one interface definition."""
+    """A discovered package and its interface definitions."""
 
     name: str
     path: str
