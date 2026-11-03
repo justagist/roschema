@@ -7,8 +7,10 @@ without any special-casing.
 
 from __future__ import annotations
 
+import posixpath
 import re
 import subprocess
+from fnmatch import fnmatchcase, translate
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -50,7 +52,13 @@ class RealFS:
             raise VfsError(f"cannot read {path}: {exc}") from exc
 
     def glob(self, pattern: str) -> list[str]:
-        return sorted(p.relative_to(self.root).as_posix() for p in self.root.glob(pattern))
+        """Return canonical paths even when the pattern traverses parent directories."""
+        return sorted(
+            {
+                posixpath.normpath(p.relative_to(self.root).as_posix())
+                for p in self.root.glob(pattern)
+            }
+        )
 
     def exists(self, path: str) -> bool:
         return (self.root / path).exists()
@@ -82,7 +90,8 @@ def _glob_to_regex(pattern: str) -> re.Pattern[str]:
     """Translate a glob pattern into a full-match regex.
 
     ``**/`` matches zero or more directory segments, ``*`` matches within a
-    single segment, ``?`` matches one non-separator character.
+    single segment, ``?`` matches one non-separator character, and character
+    classes follow :mod:`fnmatch`.
     """
     out: list[str] = []
     i = 0
@@ -100,10 +109,53 @@ def _glob_to_regex(pattern: str) -> re.Pattern[str]:
         elif pattern[i] == "?":
             out.append("[^/]")
             i += 1
+        elif pattern[i] == "[":
+            end = i + 1
+            if end < n and pattern[end] == "!":
+                end += 1
+            if end < n and pattern[end] == "]":
+                end += 1
+            end = pattern.find("]", end)
+            if end == -1:
+                out.append(r"\[")
+                i += 1
+            else:
+                out.append("(?=[^/])" + translate(pattern[i : end + 1])[:-2])
+                i = end + 1
         else:
             out.append(re.escape(pattern[i]))
             i += 1
     return re.compile("^" + "".join(out) + "$")
+
+
+def _glob_with_parents(files: list[str], pattern: str) -> list[str]:
+    """Expand virtual path segments before traversing their parents."""
+    directories = {""}
+    for path in files:
+        parent = posixpath.dirname(path)
+        while parent:
+            directories.add(parent)
+            parent = posixpath.dirname(parent)
+    paths = directories | set(files)
+    matches = {""}
+    for part in pattern.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            matches = {posixpath.dirname(p) for p in matches if p in directories and p}
+        elif part == "**":
+            matches = {
+                p for p in paths if any(not m or p == m or p.startswith(m + "/") for m in matches)
+            }
+        else:
+            matches = {
+                p
+                for p in paths
+                if p
+                and posixpath.dirname(p) in matches
+                and fnmatchcase(posixpath.basename(p), part)
+            }
+    return sorted(matches & set(files))
 
 
 class GitTreeFS:
@@ -129,6 +181,9 @@ class GitTreeFS:
         return self._git(["show", f"{self.ref}:{path}"])
 
     def glob(self, pattern: str) -> list[str]:
+        """Match tracked paths, expanding globs before any parent traversal."""
+        if ".." in pattern.split("/"):
+            return _glob_with_parents(self.files, pattern)
         rx = _glob_to_regex(pattern)
         return sorted(f for f in self.files if rx.match(f))
 

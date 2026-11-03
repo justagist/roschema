@@ -233,11 +233,14 @@ def _classify_type_change(old: Field, new: Field) -> ChangeType | None:
     # A fixed array's size is part of the wire layout: any change is a type change.
     if o.array_kind is ArrayKind.FIXED and o.array_bound != n.array_bound:
         return ChangeType.FIELD_TYPE_CHANGED
-    if o.array_kind is ArrayKind.BOUNDED and o.array_bound != n.array_bound:
-        return _bound_direction(o.array_bound, n.array_bound)
-    if o.string_bound != n.string_bound:
-        return _bound_direction(o.string_bound, n.string_bound)
-    return None
+    bounds = [(o.string_bound, n.string_bound)]
+    if o.array_kind is ArrayKind.BOUNDED:
+        bounds.append((o.array_bound, n.array_bound))
+    changes = [_bound_direction(old, new) for old, new in bounds if old != new]
+    # A tightening must not be hidden by a simultaneous capacity increase.
+    if ChangeType.FIELD_BOUND_TIGHTENED in changes:
+        return ChangeType.FIELD_BOUND_TIGHTENED
+    return changes[0] if changes else None
 
 
 def _default_changed(old: Field, new: Field) -> bool:
@@ -250,7 +253,18 @@ def _default_changed(old: Field, new: Field) -> bool:
         return True
     if old.default is None or new.default is None:
         return False
-    return old.default.value != new.default.value
+    return not _values_equal(old.default.value, new.default.value)
+
+
+def _values_equal(old: object, new: object) -> bool:
+    """Compare parsed values, treating NaNs in scalars and arrays as equivalent."""
+    if isinstance(old, float) and isinstance(new, float) and math.isnan(old) and math.isnan(new):
+        return True
+    if isinstance(old, tuple) and isinstance(new, tuple):
+        return len(old) == len(new) and all(
+            _values_equal(o, n) for o, n in zip(old, new, strict=True)
+        )
+    return old == new
 
 
 def _bound_direction(old_bound: int | None, new_bound: int | None) -> ChangeType:
@@ -288,7 +302,7 @@ def _diff_constants(
                     ChangeType.CONSTANT_TYPE_CHANGED, key, section, name, old=old_c, new=new_c
                 )
             )
-        elif old_c.value != new_c.value:
+        elif not _values_equal(old_c.value, new_c.value):
             events.append(
                 ChangeEvent(
                     ChangeType.CONSTANT_VALUE_CHANGED, key, section, name, old=old_c, new=new_c

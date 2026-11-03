@@ -7,6 +7,8 @@ when the optional 'bag' extra is not installed).
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from typer.testing import CliRunner
 
@@ -65,21 +67,37 @@ def test_convert_ros2idl_subset():
     assert "geometry_msgs/Point point" in body
 
 
+@pytest.mark.parametrize("value", ["enum Choice", "const int32 MODE = 1", "struct U {", "}"])
+def test_convert_ros2idl_accepts_keywords_in_string_constants(value):
+    """Declaration-like string contents must not affect IDL validation or structure."""
+    idl = (
+        'module demo { module msg { struct T { const string NOTE = "'
+        + value
+        + '"; int32 x; }; }; };'
+    )
+    assert _convert_ros2idl(idl) == {"demo/msg/T": f'string NOTE="{value}"\nint32 x'}
+
+
 # --- end-to-end with a real MCAP ---
 
 pytest.importorskip("mcap")
 
 
-def _write_bag(path, schemas: dict[str, str]) -> None:
+def _write_bag(
+    path, schemas: dict[str, str] | list[tuple[str, str, str]], *, summary: bool = True
+) -> None:
     from mcap.writer import Writer
 
     with open(path, "wb") as handle:
-        writer = Writer(handle)
+        writer = Writer(handle, repeat_schemas=summary)
         writer.start()
-        for name, text in schemas.items():
-            schema_id = writer.register_schema(
-                name=name, encoding="ros2msg", data=text.encode()
-            )
+        entries = (
+            [(name, "ros2msg", text) for name, text in schemas.items()]
+            if isinstance(schemas, dict)
+            else schemas
+        )
+        for name, encoding, text in entries:
+            schema_id = writer.register_schema(name=name, encoding=encoding, data=text.encode())
             channel_id = writer.register_channel(
                 topic="/" + name.replace("/", "_"),
                 message_encoding="cdr",
@@ -194,3 +212,180 @@ def test_bag_check_multiple_targets(tmp_path, monkeypatch):
     assert result.exit_code == 1
     ids = result.stdout
     assert "pkg_a/msg/A" in ids and "pkg_b/msg/B" in ids
+
+
+def test_glob_rejects_synthetic_mcap_paths(tmp_path, monkeypatch):
+    write_package(tmp_path / "src", "demo_msgs", msgs={"Pose": POSE_V1})
+    bag = tmp_path / "rec.mcap"
+    _write_bag(bag, {"demo_msgs/msg/Pose": POSE_CONCAT})
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["check", "src/**", "--against", str(bag)])
+    assert result.exit_code == 2
+    assert "use a workspace target" in " ".join(result.output.split())
+
+
+@pytest.mark.parametrize(
+    "summary,reverse,command",
+    [
+        (True, False, "bag-check"),
+        (True, True, "bag-check"),
+        (False, False, "bag-check"),
+        (True, False, "check"),
+    ],
+)
+def test_mcap_rejects_conflicting_schemas_in_either_order(tmp_path, summary, reverse, command):
+    bag = tmp_path / "conflict.mcap"
+    schemas = [
+        ("demo/msg/T", "ros2msg", "int32 x\n"),
+        ("demo/msg/T", "ros2msg", "float64 x\n"),
+    ]
+    _write_bag(bag, schemas[::-1] if reverse else schemas, summary=summary)
+    write_package(tmp_path / "ws", "demo", msgs={"T": "int32 x\n"})
+    args = (
+        ["bag-check", str(bag), str(tmp_path / "ws")]
+        if command == "bag-check"
+        else ["check", str(tmp_path / "ws"), "--against", str(bag)]
+    )
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2
+    assert "conflicting MCAP definitions" in result.output
+
+
+def test_mcap_accepts_equivalent_duplicate_definitions(tmp_path):
+    bag = tmp_path / "equivalent.mcap"
+    _write_bag(
+        bag,
+        [
+            ("demo/msg/T", "ros2msg", "int32 x\n"),
+            ("demo/T", "ros2msg", "int32   x # another comment\n"),
+        ],
+    )
+    write_package(tmp_path / "ws", "demo", msgs={"T": "int32 x\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), str(tmp_path / "ws")])
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("same_schema", [True, False])
+def test_mcap_rejects_conflicting_embedded_definitions(tmp_path, same_schema):
+    bag = tmp_path / "dependencies.mcap"
+    first = "int32 x\n===\nMSG: demo/Dep\nint32 value\n"
+    second = "int32 x\n===\nMSG: demo/Dep\nfloat64 value\n"
+    schemas = (
+        [("demo/msg/T", "ros2msg", first + "===\nMSG: demo/Dep\nfloat64 value\n")]
+        if same_schema
+        else [
+            ("demo/msg/T", "ros2msg", first),
+            ("demo/msg/U", "ros2msg", second),
+        ]
+    )
+    _write_bag(bag, schemas)
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "conflicting MCAP definitions" in result.output
+
+
+@pytest.mark.parametrize("with_supported", [True, False])
+def test_mcap_rejects_unsupported_encodings(tmp_path, with_supported):
+    bag = tmp_path / "unsupported.mcap"
+    schemas = [("demo/msg/T", "jsonschema", "{}")]
+    if with_supported:
+        schemas.append(("demo/msg/U", "ros2msg", "int32 value\n"))
+    _write_bag(bag, schemas)
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "unsupported MCAP schema encoding" in result.output
+    assert "jsonschema" in result.output
+
+
+@pytest.mark.parametrize(
+    "idl",
+    [
+        "module demo { module msg { enum Choice { A, B }; struct T { Choice x; }; }; };",
+        "module demo { module msg { struct T { int32 x; }; struct U { unknown x; }; }; };",
+        "module demo { module msg { @unsupported struct T { int32 x; }; }; };",
+        "module demo { module msg { const long MODE = 1; struct T { long x; }; }; };",
+        "module demo { module msg { struct T { long x; }; module T_Constants { "
+        "const long MODE = 1; }; }; };",
+        "module demo { module msg { struct Base { long x; }; struct T : Base { long y; }; }; };",
+    ],
+)
+def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):
+    bag = tmp_path / "unsupported-idl.mcap"
+    _write_bag(bag, [("demo/msg/T", "ros2idl", idl)])
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "unsupported ros2idl" in result.output
+
+
+def test_mcap_without_schemas_is_a_tool_error(tmp_path):
+    bag = tmp_path / "empty.mcap"
+    _write_bag(bag, {})
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "no usable ROS schemas" in result.output
+
+
+@pytest.mark.parametrize("remaining", [{"Other": "int32 y\n"}, {}])
+def test_bag_source_package_replaces_all_installed_interfaces(tmp_path, monkeypatch, remaining):
+    bag = tmp_path / "deleted.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n", "system/msg/U": "int32 x\n"})
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo", msgs={"T": "int32 x\n"})
+    write_package(prefix / "share", "system", msgs={"U": "int32 x\n"})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    source = tmp_path / "source"
+    write_package(source, "demo", msgs=remaining)
+
+    result = runner.invoke(app, ["bag-check", str(bag), str(source), "--format", "json"])
+    assert result.exit_code == 1
+    findings = json.loads(result.stdout)["findings"]
+    assert [(f["rule"], f["interface"]) for f in findings] == [("RS040", "demo/msg/T")]
+
+
+def test_last_source_target_replaces_previous_package(tmp_path):
+    bag = tmp_path / "overlap.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n"})
+    first, second = tmp_path / "first", tmp_path / "second"
+    write_package(first, "demo", msgs={"T": "int32 x\n"})
+    write_package(second, "demo", msgs={"Other": "int32 y\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), str(first), str(second)])
+    assert result.exit_code == 1
+    assert "RS040" in result.stdout
+
+
+@pytest.mark.parametrize("package_format", ["roschema.toml", "pyproject.toml"])
+def test_bag_check_uses_current_package_config(tmp_path, monkeypatch, package_format):
+    """Bag checks retain inherited rules and current-package severity overrides."""
+    bag = tmp_path / "config.mcap"
+    _write_bag(bag, {"demo/msg/T": "int32 x\n", "other/msg/T": "int32 x\n"})
+    (tmp_path / "roschema.toml").write_text('[check.rules]\nRS040 = "warn"\n')
+    pkg = write_package(tmp_path, "demo")
+    prefix = "tool.roschema." if package_format == "pyproject.toml" else ""
+    (pkg / package_format).write_text(f'[{prefix}check.rules]\nRS040 = "off"\n')
+    monkeypatch.chdir(pkg)
+    result = runner.invoke(app, ["bag-check", str(bag), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    findings = json.loads(result.stdout)["findings"]
+    assert [(f["package"], f["severity"]) for f in findings] == [("other", "warn")]
+
+
+@pytest.mark.parametrize(
+    "definition",
+    ["float64 INVALID=nan\n", "float64 x nan\n", "float64[] x [nan, 1.0]\n"],
+)
+@pytest.mark.parametrize("embedded", [False, True])
+def test_mcap_accepts_equivalent_nan_definitions(tmp_path, definition, embedded):
+    """Repeated schemas and dependencies may contain equivalent NaN values."""
+    bag = tmp_path / "nan.mcap"
+    schema = "demo/msg/T"
+    text = definition
+    if embedded:
+        schema = "demo/msg/Wrapper"
+        text = "demo/T value\n===\nMSG: demo/T\n" + definition
+    _write_bag(bag, [(schema, "ros2msg", text), ("demo/msg/T", "ros2msg", definition)])
+    messages = {"T": definition}
+    if embedded:
+        messages["Wrapper"] = "demo/T value\n"
+    pkg = write_package(tmp_path, "demo", msgs=messages)
+    result = runner.invoke(app, ["bag-check", str(bag), str(pkg)])
+    assert result.exit_code == 0, result.output

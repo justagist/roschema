@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 from collections.abc import Callable
-from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -37,7 +37,7 @@ from .loader import load_interfaces
 from .parser import ParseError
 from .report import build_github, build_json, render_lint, render_text
 from .rules import Finding, all_lint_rules, evaluate, lint_interfaces
-from .vfs import RealFS, VfsError, git_toplevel
+from .vfs import GitTreeFS, RealFS, VfsError, git_toplevel
 
 app = typer.Typer(
     help="Breaking-change detection, linting and formatting for ROS 2 interfaces.",
@@ -48,8 +48,26 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+def _version_callback(value: bool) -> None:
+    """Print the package version and exit before validating command arguments."""
+    if value:
+        typer.echo(f"roschema version {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
-def _main() -> None:
+def _main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-v",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version and exit.",
+        ),
+    ] = False,
+) -> None:
     """roschema: keep ROS 2 interface changes honest."""
 
 
@@ -75,9 +93,11 @@ def check(
         typer.Option("--config", help="Explicit config file (roschema.toml or pyproject.toml)."),
     ] = None,
     deep: Annotated[
-        bool,
-        typer.Option("--deep", help="Resolve nested types and flag transitive breakage (RS110)."),
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--deep/--no-deep", help="Resolve nested types and flag transitive breakage (RS110)."
+        ),
+    ] = None,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
@@ -177,7 +197,9 @@ def _resolve_current(
         if res is not None:
             current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
     for target in targets:
-        res = resolve_target(target)
+        res = resolve_target(target, include_empty=True)
+        replaced = {pkg.name for pkg in res.packages}
+        current = {key: iface for key, iface in current.items() if iface.package not in replaced}
         current.update(load_interfaces(res.vfs, apply_exclude(res.packages, excludes)))
     source = "targets+environment" if targets else "environment (ament index)"
     return current, source
@@ -189,26 +211,41 @@ def _compute(
     level: str | None,
     config_path: Path | None,
     exclude: list[str] | None,
-    deep: bool = False,
+    deep: bool | None = None,
 ) -> tuple[list[Finding], str, str, str]:
     """Resolve both sides, diff and finalize; the shared check pipeline."""
-    new_res = resolve_target(target)
+    new_res = resolve_target(target, allow_empty_glob=True)
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
     old_res = resolve_old(new_res.vfs.root)
     config = load_config(new_res.vfs.root, new_res.packages, config_path)
     excludes = exclude or []
     new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, excludes))
-    old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
-    if new_res.scope is not None:
-        # a glob target scopes both sides to the matched packages, so baseline-only
-        # packages outside the glob are not reported as removed
-        old_ifaces = {k: v for k, v in old_ifaces.items() if v.package in new_res.scope}
+    old_packages = old_res.packages
+    prefix = _display_prefix(new_res.vfs.root)
+    if new_res.glob_pattern is not None:
+        if old_res.source.startswith(("mcap:", "lock:")):
+            raise VfsError(
+                "path glob targets require a Git or directory baseline; "
+                "use a workspace target for lockfile or MCAP baselines"
+            )
+        pattern = new_res.glob_pattern
+        if isinstance(old_res.vfs, GitTreeFS):
+            pattern = posixpath.join(prefix, pattern)
+        manifests = set(old_res.vfs.glob(pattern.rstrip("/") + "/**/package.xml"))
+        scope = {p.name for p in new_res.packages} | {
+            p.name for p in old_packages if posixpath.join(p.path, "package.xml") in manifests
+        }
+        if not scope:
+            raise VfsError(f"target glob {target!r} matched no interface packages on either side")
+        old_packages = tuple(p for p in old_packages if p.name in scope)
+    old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
     raw = evaluate(diff_interfaces(old_ifaces, new_ifaces))
-    if deep:
-        raw = raw + transitive_findings(new_ifaces, raw)
+    deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
+    if deep_packages:
+        raw = raw + [f for f in transitive_findings(new_ifaces, raw) if f.package in deep_packages]
     findings = finalize_findings(raw, config, level)
-    return findings, new_res.source, old_res.source, _display_prefix(new_res.vfs.root)
+    return findings, new_res.source, old_res.source, prefix
 
 
 def _display_prefix(target_dir: Path) -> str:
@@ -282,13 +319,12 @@ def lint(
         if not isinstance(res.vfs, RealFS):
             raise VfsError("lint target must be a directory or workspace")
         config = load_config(res.vfs.root, res.packages, config_path)
-        config = replace(config, lint_rules={**config.lint_rules, **overrides})
         interfaces = load_interfaces(res.vfs, apply_exclude(res.packages, exclude or []))
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    findings = finalize_lint(lint_interfaces(interfaces), config)
+    findings = finalize_lint(lint_interfaces(interfaces), config, overrides)
     if fmt == "json":
         typer.echo(json.dumps(build_json(findings), indent=2))
     elif fmt == "github":

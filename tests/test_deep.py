@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from _helpers import write_package
@@ -73,3 +74,34 @@ def test_cli_deep_adds_rs110(tmp_path):
     assert deep.exit_code == 1
     assert "RS110" in deep.stdout
     assert "Pose" in deep.stdout
+
+
+@pytest.mark.parametrize(
+    "workspace_deep,package_deep,options,expected",
+    [
+        (True, None, [], True),
+        (False, True, [], True),
+        (True, False, [], False),
+        (True, None, ["--no-deep"], False),
+        (False, False, ["--deep"], True),
+    ],
+)
+def test_config_deep_precedence(tmp_path, workspace_deep, package_deep, options, expected):
+    old, new = tmp_path / "old", tmp_path / "new"
+    for root, field_type in [(old, "int32"), (new, "float64")]:
+        write_package(
+            root,
+            "demo",
+            msgs={
+                "Point": f"{field_type} x\n",
+                "Wrapper": "demo/Point point\n",
+            },
+        )
+    (new / "roschema.toml").write_text(f"[check]\ndeep = {str(workspace_deep).lower()}\n")
+    if package_deep is not None:
+        (new / "demo" / "roschema.toml").write_text(
+            f"[check]\ndeep = {str(package_deep).lower()}\n"
+        )
+    result = runner.invoke(app, ["check", str(new), "--against", str(old), *options])
+    assert result.exit_code == 1
+    assert ("RS110" in result.stdout) == expected

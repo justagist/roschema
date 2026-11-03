@@ -298,7 +298,7 @@ Uses `char`, or a scalar `byte`, both deprecated aliases in ROS 2.
 
 ### RSL006 -- Unbounded string or array
 
-A field is an unbounded array or unbounded string.
+A field is an unbounded array or contains unbounded strings.
 
 - Default severity: off
 

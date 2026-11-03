@@ -90,7 +90,9 @@ roschema check [TARGET] --against REF [--level LEVEL] [--format text|json|github
 `TARGET` is a path, a package name, or a glob (`'src/**'`) that expands to every
 package underneath; omit it for the current workspace. Discovery skips trees
 marked with `COLCON_IGNORE` or `AMENT_IGNORE`, including standard colcon build
-and install directories.
+and install directories. Glob targets include matching packages deleted from a Git
+or directory baseline. Lockfile and MCAP baselines have synthetic paths; use a
+workspace target with those baselines instead of a path glob.
 
 `--against` accepts a git ref (validated with `git rev-parse`), a directory, an
 MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is auto-detected. A
@@ -166,10 +168,19 @@ definitions rather than reported as missing.
 
 Optional `TARGETS` (paths or package names) are overlaid on top of the
 environment, so a package you are editing can be checked from source instead of
-its installed copy. A bag type found in neither the environment nor any target
+its installed copy. Each source package replaces its entire installed interface
+set, so deleted source interfaces are reported as removed even when an installed
+copy remains. If targets overlap, the last target wins for that package. A bag
+type found in neither the environment nor any target
 is reported as removed (RS040). `ros2msg` schemas (including concatenated
 dependent definitions) are fully supported; `ros2idl` is a best-effort
-conversion of the msg-equivalent subset.
+conversion of the msg-equivalent subset. Unsupported encodings or IDL constructs,
+conflicting definitions of the same type (including embedded dependencies), and
+bags without usable ROS schemas produce a tool error (exit `2`). Equivalent
+definitions that differ only in formatting or comments are accepted, including
+repeated NaN constants and defaults. IDL struct inheritance and constants outside
+structs (including generated `T_Constants` modules) are rejected because their
+conversion is incomplete.
 
 ## Compatibility levels
 
@@ -187,11 +198,17 @@ conversion of the msg-equivalent subset.
 
 `roschema.toml` at the workspace root, a per-package `roschema.toml`, or
 `[tool.roschema]` in `pyproject.toml`. Precedence: CLI > package > workspace >
-defaults.
+defaults. Workspace discovery searches upwards to the Git repository root, or
+the filesystem root outside Git. Package configurations override inherited
+workspace values even when checking the package directly by path. At each
+directory, `roschema.toml` takes precedence over `[tool.roschema]`. Unknown rule
+IDs, rule IDs in the wrong section, and invalid settings produce configuration
+errors (exit `2`).
 
 ```toml
 [check]
 level = "source"
+deep = false          # --deep / --no-deep overrides this
 
 [check.rules]
 RS008 = "off"          # off | warn | error

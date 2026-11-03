@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 
+import pytest
 from typer.testing import CliRunner
 
 from _helpers import git_commit_all, make_git_repo, write_package
@@ -180,3 +182,120 @@ def test_check_missing_mcap_baseline_errors(tmp_path):
         app, ["check", str(tmp_path / "new"), "--against", "baseline.mcap"]
     )
     assert result.exit_code == 2  # file does not exist
+
+
+def test_check_mixed_bound_changes_fail(tmp_path):
+    old, new = tmp_path / "old", tmp_path / "new"
+    write_package(old, "my_msgs", msgs={"T": "string<=64[<=4] names\n"})
+    write_package(new, "my_msgs", msgs={"T": "string<=8[<=16] names\n"})
+    result = runner.invoke(app, ["check", str(new), "--against", str(old)])
+    assert result.exit_code == 1
+    assert "RS007" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "pattern,delete_all,workspace,removed",
+    [
+        ("src/**", False, ".", {"a"}),
+        ("src/**", True, ".", {"a", "b"}),
+        ("src/*", False, ".", {"a"}),
+        ("./src/[ab]*", False, ".", {"a"}),
+        ("src/**", True, "nested", {"a", "b"}),
+    ],
+)
+def test_glob_reports_deleted_packages(
+    tmp_path, monkeypatch, pattern, delete_all, workspace, removed
+):
+    repo = make_git_repo(tmp_path / "repo")
+    base = repo / workspace
+    write_package(base / "src", "a", msgs={"A": "int32 x\n"})
+    write_package(base / "src" / "nested", "b", msgs={"B": "int32 y\n"})
+    write_package(base / "outside", "other", msgs={"T": "int32 z\n"})
+    git_commit_all(repo, "baseline")
+    shutil.rmtree(base / "src" / "a")
+    shutil.rmtree(base / "outside")
+    if delete_all:
+        shutil.rmtree(base / "src")
+    monkeypatch.chdir(base)
+
+    result = runner.invoke(app, ["check", pattern, "--against", "HEAD", "--format", "json"])
+    assert result.exit_code == 1, result.output
+    findings = json.loads(result.stdout)["findings"]
+    assert {f["package"] for f in findings} == removed
+    assert {f["rule"] for f in findings} == {"RS040"}
+
+
+def test_glob_without_matches_on_either_side_is_error(tmp_path, monkeypatch):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo, "other", msgs={"T": "int32 z\n"})
+    git_commit_all(repo, "baseline")
+    monkeypatch.chdir(repo)
+    result = runner.invoke(app, ["check", "src/**", "--against", "HEAD"])
+    assert result.exit_code == 2
+    assert "matched no interface packages" in result.output
+
+
+def test_glob_reports_deletion_in_directory_baseline(tmp_path, monkeypatch):
+    old, new = tmp_path / "old", tmp_path / "new"
+    write_package(old / "src", "gone", msgs={"T": "int32 x\n"})
+    write_package(old / "outside", "other", msgs={"T": "int32 x\n"})
+    new.mkdir()
+    monkeypatch.chdir(new)
+    result = runner.invoke(app, ["check", "src/**", "--against", str(old)])
+    assert result.exit_code == 1
+    assert "gone/msg/T" in result.stdout
+    assert "other/msg/T" not in result.stdout
+
+
+def test_direct_package_check_inherits_workspace_config(tmp_path, monkeypatch):
+    repo = make_git_repo(tmp_path / "repo")
+    pkg = write_package(repo / "src", "demo", msgs={"T": "int32 x\n"})
+    (repo / "roschema.toml").write_text('[check.rules]\nRS003 = "warn"\n')
+    git_commit_all(repo, "baseline")
+    (pkg / "msg" / "T.msg").write_text("float64 x\n")
+    monkeypatch.chdir(repo)
+    for target in [str(repo), str(pkg)]:
+        result = runner.invoke(app, ["check", target, "--against", "HEAD", "--format", "json"])
+        assert result.exit_code == 0
+        findings = json.loads(result.stdout)["findings"]
+        assert [(f["rule"], f["severity"]) for f in findings] == [("RS003", "warn")]
+
+
+def test_deleted_last_interface_keeps_package_config(tmp_path):
+    """A package's removal rules still apply after its last interface is deleted."""
+    repo = make_git_repo(tmp_path / "repo")
+    pkg = write_package(repo / "src", "demo", msgs={"T": "int32 x\n"})
+    (pkg / "roschema.toml").write_text('[check.rules]\nRS040 = "warn"\n')
+    git_commit_all(repo, "baseline")
+    (pkg / "msg" / "T.msg").unlink()
+    result = runner.invoke(app, ["check", str(pkg), "--against", "HEAD", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    findings = json.loads(result.stdout)["findings"]
+    assert [(f["rule"], f["severity"]) for f in findings] == [("RS040", "warn")]
+
+
+@pytest.mark.parametrize("baseline", ["git", "directory"])
+@pytest.mark.parametrize("pattern", ["src/nested/../*", "src/*/../*", "src/missing*/../*"])
+def test_glob_parent_traversal_preserves_deletion_scope(tmp_path, monkeypatch, baseline, pattern):
+    """Match traversal through existing glob directories on each baseline independently."""
+    old = make_git_repo(tmp_path / "old")
+    for name in ("gone", "survivor"):
+        write_package(old / "src", name, msgs={"T": "int32 x\n"})
+    write_package(old / "outside", "other", msgs={"T": "int32 x\n"})
+    (old / "src" / "nested").mkdir()
+    (old / "src" / "nested" / "keep").touch()
+    git_commit_all(old, "baseline")
+    new = tmp_path / "new"
+    shutil.copytree(old, new)
+    shutil.rmtree(new / "src" / "gone")
+    shutil.rmtree(new / "outside")
+    monkeypatch.chdir(new)
+    against = "HEAD" if baseline == "git" else str(old)
+    result = runner.invoke(app, ["check", pattern, "--against", against, "--format", "json"])
+    if "missing" in pattern:
+        assert result.exit_code == 2
+        assert "matched no interface packages" in result.output
+    else:
+        assert result.exit_code == 1, result.output
+        findings = json.loads(result.stdout)["findings"]
+        assert [(f["package"], f["rule"]) for f in findings] == [("gone", "RS040")]

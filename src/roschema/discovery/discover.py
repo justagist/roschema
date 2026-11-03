@@ -12,7 +12,9 @@ _KINDS = ("msg", "srv", "action")
 _NAME_RE = re.compile(r"<name>\s*([A-Za-z0-9_-]+)\s*</name>")
 
 
-def discover(vfs: VFS, root: str = ".") -> tuple[DiscoveredPackage, ...]:
+def discover(
+    vfs: VFS, root: str = ".", *, include_empty: bool = False
+) -> tuple[DiscoveredPackage, ...]:
     """Find interface packages by walking for ``package.xml`` under ``root``.
 
     Only packages that actually contain ``msg``/``srv``/``action`` definitions
@@ -23,6 +25,7 @@ def discover(vfs: VFS, root: str = ".") -> tuple[DiscoveredPackage, ...]:
     Args:
         vfs: Backend to read through.
         root: Directory (VFS-relative) to walk; ``"."`` means the VFS root.
+        include_empty: Include packages without interfaces for source overlays.
 
     Returns:
         Discovered packages, sorted by name.
@@ -35,7 +38,7 @@ def discover(vfs: VFS, root: str = ".") -> tuple[DiscoveredPackage, ...]:
             continue
         name = _package_name(vfs, pkg_xml, pkg_dir)
         interfaces = _collect_interfaces(vfs, name, pkg_dir)
-        if interfaces:
+        if interfaces or include_empty:
             packages.append(DiscoveredPackage(name=name, path=pkg_dir, interfaces=interfaces))
     packages.sort(key=lambda p: p.name)
     return tuple(packages)

@@ -126,3 +126,13 @@ def test_freeze_normalizes_before_hashing(tmp_path):
     # the field line hashes identically either way
     assert "float32 theta" in lock_a
     assert "float32 theta" in lock_b
+
+
+def test_glob_rejects_synthetic_lockfile_paths(tmp_path, monkeypatch):
+    write_package(tmp_path / "src", "p", msgs={"Foo": "int32 a\n"})
+    lock = tmp_path / "roschema.lock"
+    lock.write_text(build_lock(_ifaces(Foo="int32 a\n"), "0.1.0"))
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["check", "src/**", "--against", str(lock)])
+    assert result.exit_code == 2
+    assert "use a workspace target" in " ".join(result.output.split())
