@@ -17,37 +17,69 @@ in a bare CI container.
 
 ## Quickstart
 
-Test it without installing (expects `uvx` is present):
+From the root of your workspace or repository, compare the working tree against
+the base branch (needs [`uv`](https://docs.astral.sh/uv/); nothing else to
+install):
 
 ```bash
-# in a pull request, compare the working tree against the base branch
 uvx roschema check --against origin/main
 ```
 
-See the full [rule reference](docs/rules.md) for every check (`RS***`) and lint
-(`RSL***`) rule.
+roschema finds every interface package below the current directory, compares
+it with the same packages at `origin/main`, and lists each breaking change with
+its rule ID, location and a suggested semver bump. It exits `1` when an error is
+found, so it works as a CI gate as is; to run it on every pull request, use the
+[GitHub Action](#github-action).
 
-Prefer a runnable example? The [roschema-demo](https://github.com/justagist/roschema-demo)
-repo has a `robot_msgs` package with a passing and a failing branch to compare,
-plus a ready-to-copy GitHub Action workflow.
+Next steps:
+
+- [What gets reported](#what-gets-reported) explains levels and severities.
+- The [rule reference](docs/rules.md) lists every check (`RS***`) and lint
+  (`RSL***`) rule, starting with a one-line overview of each.
+- The [roschema-demo](https://github.com/justagist/roschema-demo) repo has a
+  `robot_msgs` package with a passing and a failing branch to compare, plus a
+  ready-to-copy workflow.
 
 ## Installation
 
-Requires Python 3.10+ (ROS installation **not** necessary).
+Requires Python 3.10+; a ROS installation is **not** needed.
 
 ```bash
-pip install roschema              # or: uv tool install roschema
-pip install 'roschema[bag]'       # optional: MCAP bag support (for bag-check)
+uv tool install roschema            # or: pipx install roschema
+uv tool install 'roschema[bag]'     # with MCAP bag support, for bag-check
 ```
 
-Or run it without installing anything using `uvx`:
+Inside a virtualenv, `pip install roschema` works too. Outside one, Ubuntu 24.04
+(the Jazzy platform) refuses `pip install` into the system Python
+("externally-managed-environment", PEP 668), so prefer `uv tool` or `pipx`.
 
-```bash
-uvx roschema check --against origin/main
-```
+To run it without installing anything, use `uvx roschema ...` as in the
+quickstart. The [GitHub Action](#github-action) needs no installation either.
 
-Using roschema as a [GitHub Action](#github-action) needs **no installation or
-setup** - the action provisions it on the runner for you.
+## What gets reported
+
+CDR, the ROS 2 wire format, is positional: fields are serialised in declaration
+order with no field tags. Adding, removing, reordering or retyping a field
+therefore breaks the wire format even when your code still compiles, so
+roschema compares interfaces structurally rather than by text.
+
+Every rule belongs to one or more **compatibility levels**. `--level` picks a
+cumulative bundle of levels to report; the default is `source`.
+
+| Level | Reports | Example |
+|---|---|---|
+| `wire` | CDR byte-stream compatibility only | a field added (RS002) |
+| `source` | wire + generated C++/Python API | a constant removed (RS020) |
+| `introspection` | source + name-based tooling (bags, echo, YAML) | a field renamed (RS005) |
+| `behavior` | introspection + semantics (defaults, constant values) | a default changed (RS030) |
+
+Levels decide **what is reported**; each rule's **severity** (`error`, `warn`
+or `off`) decides whether a reported finding fails the run. Only errors fail;
+warnings are printed but exit `0`. Rules that are off by default (such as RS060)
+are reported at every level once you enable them.
+
+The [rule overview](docs/rules.md#overview) shows each rule's levels and default
+severity in one table.
 
 ## Common usage
 
@@ -78,153 +110,204 @@ roschema check --against roschema.lock
 
 # is this recorded bag still compatible with the installed interfaces?
 roschema bag-check recording.mcap
+
+# what would be checked? (discovered packages and interfaces)
+roschema ls
 ```
 
 ## Checking
 
 ```
-roschema check [TARGET] --against REF [--level LEVEL] [--format text|json|github]
-               [--deep] [--exit-zero] [--config PATH] [--exclude GLOB]
+roschema check [TARGET] --against BASELINE [--level LEVEL] [--format text|json|github]
+               [--deep | --no-deep] [--exit-zero] [--config PATH] [--exclude GLOB]
 ```
 
-`TARGET` is a path, a package name, or a glob (`'src/**'`) that expands to every
-package underneath; omit it for the current workspace. Discovery skips trees
-marked with `COLCON_IGNORE` or `AMENT_IGNORE`, including standard colcon build
-and install directories. Glob targets include matching packages deleted from a Git
-or directory baseline. Lockfile and MCAP baselines have synthetic paths; use a
-workspace target with those baselines instead of a path glob.
+`TARGET` selects what to check; omit it to check every interface package below
+the current directory.
+
+- **A path** checks the packages below that directory.
+- **A package name** (its `<name>` in `package.xml`) checks that package's
+  source below the current directory. If there is no such source package, the
+  installed copy from the ament index (`AMENT_PREFIX_PATH`) is used, with a
+  warning.
+- **A glob** such as `'src/**'` checks every package below the matching
+  directories, including packages that exist only in a Git or directory
+  baseline (so deleting a package is reported).
+
+Discovery skips trees marked with `COLCON_IGNORE` or `AMENT_IGNORE`, which
+includes colcon's `build/`, `install/` and `log/` directories.
 
 `--against` accepts a git ref (validated with `git rev-parse`), a directory, an
-MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is auto-detected. A
-git ref is preferred when a directory of the same name also exists -- prefix the
-argument with `./` (e.g. `--against ./main`) to force the directory. Exit codes:
-`0` clean, `1` breaking changes found, `2` tool/usage error. `--exit-zero` forces
-`0`. Warnings alone do not fail (exit `0`).
+MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is detected
+automatically. Initialised git submodules are compared at the commit the
+baseline records for them.
 
-CDR is positional -- fields are serialised in declaration order with no field
-tags -- so adding, removing, reordering or retyping a field is wire-breaking
-even when your code still compiles. That is why the taxonomy is structural, and
-why the default `source` level already reports wire-level changes.
+Limitations:
 
-## Freeze (non-git baselines)
+- When a git ref and a directory share a name, the git ref wins; prefix the
+  directory with `./` (`--against ./main`) to use it instead.
+- Lockfile and MCAP baselines have no real paths, so use a workspace or package
+  target with them rather than a path glob.
+- A submodule whose recorded commit is not available locally (for example after
+  a shallow fetch) is skipped with a warning.
+
+### Deep checking
+
+Without `--deep`, an embedded type is compared by name only. `check --deep`
+resolves nested types through the workspace and the ament index and reports
+transitive breakage (RS110): an interface that embeds, directly or through other
+types, a type whose wire layout changed is flagged even when its own definition
+did not change, with the chain that connects them. RS110 takes the severity of
+the change it traces back to, and suppressed or allowlisted changes are not
+followed.
+
+## Linting and formatting
+
+```
+roschema lint [TARGET] [--format text|json|github] [--rules RULE=SEV] [--exit-zero]
+              [--config PATH] [--exclude GLOB]
+roschema fmt  [TARGET] [--check] [--exclude GLOB]
+```
+
+`lint` checks a single tree, with no baseline. The naming rules follow rosidl:
+field names in snake_case (RSL001), constants in UPPER_SNAKE_CASE (RSL002) and
+interface names in PascalCase (RSL003). It also flags ambiguous `char` and
+scalar `byte` types (RSL005) and fields shared by a service's request and
+response (RSL010). RSL004 (missing documentation) and RSL006 (unbounded
+fields) are off by default. Enable rules in `[lint.rules]`, or per run with
+`--rules`, e.g. `--rules RSL004=warn --rules RSL001=off` (a bare `--rules RSL004`
+means `=warn`). `--rules` is repeatable and overrides configuration.
+
+`fmt` formats interface files canonically: a single space between type and
+name, no spaces around a constant's `=`, two spaces before a trailing comment
+and one trailing newline. Comments, blank lines and section separators are kept,
+and so are inline `# roschema: ignore=` suppressions. Formatting is idempotent
+and never changes what `check` reports; `fmt --check` exits `1` if any file
+would change.
+
+## Freeze (baselines without git)
 
 ```
 roschema freeze [TARGET] -o roschema.lock
 roschema check  [TARGET] --against roschema.lock
 ```
 
-`freeze` writes a lockfile holding each interface's canonical (post-`fmt`) text
-plus a sha256, so a release tarball can carry its own baseline without git.
-`check --against roschema.lock` reads it back (sha256-verified) and compares.
+`freeze` writes a lockfile with each interface's canonical (formatted) text and
+its sha256, so a release tarball can carry its own baseline. `check --against
+roschema.lock` verifies the hashes and compares against it.
 
-The lockfile records the roschema `tool_version` for provenance; upgrading
-roschema therefore changes that one line on the next `freeze` even when the
-interfaces are identical. It is not read during comparison -- `check` diffs only
-the interface text -- so the churn is cosmetic.
-
-## Deep checking
-
-`check --deep` resolves nested complex types through the workspace and ament
-index and reports transitive breakage (`RS110`): an interface that embeds -
-directly or through nested types - another whose wire layout changed is flagged
-even when its own definition is unchanged, with the causal chain shown. Without
-`--deep`, nested types are compared by name only.
-
-## Linting and formatting
-
-```
-roschema lint [TARGET] [--format text|json|github] [--rules RULE=SEV] [--exit-zero]
-roschema fmt  [TARGET] [--check]
-```
-
-`lint` checks a single tree (no baseline). Naming rules follow rosidl: field
-names snake_case (RSL001), constants UPPER_SNAKE (RSL002), interface names
-PascalCase (RSL003); it also flags ambiguous `char`/scalar-`byte` (RSL005) and
-request/response field shadowing in services (RSL010). RSL004 (missing doc) and
-RSL006 (unbounded) are off by default; enable via `[lint.rules]` or per run with
-`--rules` (e.g. `--rules RSL004=warn --rules RSL001=off`; a bare `--rules RSL004`
-means `=warn`). `--rules` is repeatable and beats config.
-
-`fmt` canonically formats interface files (single space between type and name,
-`=` without spaces for constants, one trailing newline) while preserving
-comments, blank lines and section separators. It is idempotent and never
-changes what `check` reports; `--check` exits `1` if any file would change.
-Inline `# roschema: ignore=` suppressions survive formatting.
+The lockfile also records the roschema `tool_version`, so upgrading roschema
+changes that one line on the next `freeze` even when the interfaces are the
+same. Comparison ignores it.
 
 ## Checking against a recorded bag
 
 ```
-pip install 'roschema[bag]'
-roschema bag-check recording.mcap [TARGETS...] [--format ...]
+roschema bag-check BAG.mcap [TARGETS...] [--level LEVEL] [--config PATH]
+                   [--format text|json|github] [--exit-zero] [--exclude GLOB]
 ```
 
-`bag-check` reads the interface definitions embedded in an MCAP bag and checks
-whether they are still compatible with your **current environment** - the bag is
-the baseline, so it flags changes that would stop current code from reading the
-recorded data. By default the bag's types are resolved from the ament index
-(`AMENT_PREFIX_PATH`), i.e. the packages installed in the sourced environment,
-so system packages like `sensor_msgs` are compared against their installed
-definitions rather than reported as missing.
+Needs the `bag` extra (`uv tool install 'roschema[bag]'`).
 
-Optional `TARGETS` (paths or package names) are overlaid on top of the
-environment, so a package you are editing can be checked from source instead of
-its installed copy. Each source package replaces its entire installed interface
-set, so deleted source interfaces are reported as removed even when an installed
-copy remains. If targets overlap, the last target wins for that package. A bag
-type found in neither the environment nor any target
-is reported as removed (RS040). `ros2msg` schemas (including concatenated
-dependent definitions) are fully supported; `ros2idl` is a best-effort
-conversion of the msg-equivalent subset. Unsupported encodings or IDL constructs,
-conflicting definitions of the same type (including embedded dependencies), and
-bags without usable ROS schemas produce a tool error (exit `2`). Equivalent
-definitions that differ only in formatting or comments are accepted, including
-repeated NaN constants and defaults. IDL struct inheritance and constants outside
-structs (including generated `T_Constants` modules) are rejected because their
-conversion is incomplete.
+`bag-check` uses the interface definitions recorded in an MCAP bag as the
+baseline and asks whether **current code can still decode the recording**. It
+therefore reports at the `wire` level by default; pass `--level` (or set
+`[check] level`) to include source-level changes such as removed constants.
 
-## Compatibility levels
+The bag's types are compared with the packages installed in the sourced
+environment (the ament index), so system packages such as `sensor_msgs` are
+compared with their installed definitions. Optional `TARGETS` (paths or package
+names) replace the installed copy of their packages with your source: a package
+you are editing is checked as it is now, and interfaces you deleted from it are
+reported as removed. If two targets provide the same package, the last one
+wins. A bag type found neither in the environment nor in a target is reported
+as removed (RS040).
 
-`--level` selects a cumulative bundle of what is reported; the default is
-`source`.
+Limitations:
 
-| Level | Reports |
-|---|---|
-| `wire` | CDR byte-stream compatibility only |
-| `source` | wire + generated C++/Python API |
-| `introspection` | source + name-based tooling (bags, echo, YAML) |
-| `behavior` | introspection + semantics (defaults, constant values) |
+- `ros2msg` schemas are fully supported, including the concatenated definitions
+  of dependent types and the `SRV:` blocks recorded for service event topics.
+- `ros2idl` schemas are converted on a best-effort basis for the subset that has
+  a `.msg` equivalent. Other encodings and IDL constructs (enums, unions,
+  typedefs, annotations, inheritance, constants outside structs, `wchar`) are a
+  tool error (exit `2`).
+- Topics recorded without a definition (rosbag2 leaves them empty when it cannot
+  find one) are skipped and named in a note.
+- Two different definitions of the same type in one bag are a tool error.
+  Definitions that differ only in formatting or comments are accepted.
 
 ## Configuration
 
-`roschema.toml` at the workspace root, a per-package `roschema.toml`, or
-`[tool.roschema]` in `pyproject.toml`. Precedence: CLI > package > workspace >
-defaults. Workspace discovery searches upwards to the Git repository root, or
-the filesystem root outside Git. Package configurations override inherited
-workspace values even when checking the package directly by path. At each
-directory, `roschema.toml` takes precedence over `[tool.roschema]`. Unknown rule
-IDs, rule IDs in the wrong section, and invalid settings produce configuration
-errors (exit `2`).
+Settings come from `roschema.toml`, or from `[tool.roschema]` in
+`pyproject.toml`. A file at the workspace root applies to every package, and a
+file in a package directory overrides it for that package. Precedence is CLI >
+package > workspace > defaults. roschema looks for the workspace file in the
+target directory and its parents, up to the git repository root (or the
+filesystem root outside git). In each directory, `roschema.toml` takes
+precedence over `pyproject.toml`.
 
 ```toml
 [check]
-level = "source"
-deep = false          # --deep / --no-deep overrides this
+level = "source"       # wire | source | introspection | behavior
+deep = false           # --deep / --no-deep overrides this
 
 [check.rules]
 RS008 = "off"          # off | warn | error
 
 [check.allow]
-# intentional breaks need a fully-qualified target and a mandatory reason
+# an intentional break: a fully-qualified target and a mandatory reason
 "my_msgs/msg/State.old_field" = { rules = ["RS001"], reason = "removed in 2.0, see #142" }
+
+[lint.rules]
+RSL004 = "warn"
 ```
 
-Inline suppression: a trailing comment on the new-side member line, e.g.
-`float64 theta  # roschema: ignore=RS003` (comma-separate multiple IDs).
-Suppressed findings are counted, not failed.
+Unknown keys, unknown rule IDs (or IDs in the wrong section) and invalid values
+are configuration errors (exit `2`), so a misspelt setting cannot silently do
+nothing. Setting a rule's severity does not change which levels are reported,
+except for rules that are off by default (see
+[What gets reported](#what-gets-reported)).
 
-## JSON output
+### Suppressing findings
 
-`--format json` emits a stable document (`version: 1`):
+Suppressed findings are counted in the summary but never fail the run.
+
+**Inline:** a trailing comment on the member line in the new version, e.g.
+`float64 theta  # roschema: ignore=RS003`. Separate several IDs with commas.
+This works for lint rules too.
+
+**Allowlist:** an entry in `[check.allow]`, keyed by the finding's target:
+
+```
+<package>/<kind>/<Name>[.<section>][.<member>]
+```
+
+- `<kind>` is `msg`, `srv` or `action`.
+- `<section>` is given for services (`request`, `response`) and actions (`goal`,
+  `result`, `feedback`) only, e.g. `my_srvs/srv/SetMode.request.mode`.
+- Findings about a whole interface or section (RS040 interface removed, RS110,
+  RS004 fields reordered) have no `<member>`, e.g. `my_msgs/msg/Old`.
+
+`reason` is required. `rules` limits the entry to those rule IDs; omit it to
+allow every rule for that target.
+
+## Output
+
+**Text** (the default) groups findings by package and ends with a summary and a
+semver advice per package:
+
+- **MAJOR** when the package has a wire- or source-level error;
+- **MINOR** when its only notable change is an added field (RS002) whose
+  severity you lowered to `warn`;
+- **PATCH** otherwise.
+
+The advice only covers reported findings. Additions such as a new interface or
+constant are not findings, so they never raise the advice to MINOR on their own.
+
+**`--format github`** emits `::error`/`::warning` workflow commands, which GitHub
+shows as annotations on the PR diff.
+
+**`--format json`** emits a stable document (`version: 1`):
 
 ```json
 {
@@ -254,14 +337,24 @@ Suppressed findings are counted, not failed.
 }
 ```
 
-`old`/`new` are `null` when there is no corresponding side (e.g. a removed
-interface has no `new`). `--format github` emits `::error`/`::warning`
-workflow-command annotations instead.
+`old`/`new` are `null` when there is no corresponding side (a removed interface
+has no `new`). `lint` output has no `advisories`.
+
+## Exit codes
+
+| Code | `check`, `bag-check`, `lint` | `fmt --check` | Other commands |
+|---|---|---|---|
+| `0` | no unsuppressed errors (warnings allowed) | every file formatted | success |
+| `1` | at least one unsuppressed error | a file would change | n/a |
+| `2` | tool or usage error (bad target, baseline, configuration or file) | tool or usage error | tool or usage error |
+
+`--exit-zero` turns `1` into `0` for `check`, `bag-check` and `lint`; tool
+errors still exit `2`.
 
 ## GitHub Action
 
-A composite action wraps `uvx roschema check` and posts inline annotations on
-the PR diff:
+A composite Action runs `roschema check` on the runner (no setup needed) and
+posts the findings as annotations on the PR diff:
 
 ```yaml
 # .github/workflows/interfaces.yml
@@ -282,19 +375,42 @@ jobs:
           # exclude: "vendor_msgs* legacy_msgs/msg/Old"
 ```
 
-`against` takes the same values as the CLI (git ref, directory, `.mcap`,
-`roschema.lock`). A lockfile or directory baseline needs no `fetch-depth: 0`
-because it is a plain file in the checkout.
+| Input | Default | Meaning |
+|---|---|---|
+| `target` | `.` | path, package name or glob, as for the CLI |
+| `against` | `origin/main` | git ref, directory, `.mcap` bag or `roschema.lock` |
+| `level` | (empty) | reporting level; empty uses the configured level, else `source` |
+| `format` | `github` | `text`, `json` or `github` |
+| `deep` | `"false"` | `"true"` adds `--deep` |
+| `exclude` | (empty) | whitespace-separated globs passed as `--exclude` |
+| `version` | `roschema` | the roschema requirement installed with `uvx` |
 
-By default the Action installs the latest roschema release, so new rules can
-change results without any change on your side. Uncomment `version` to pin a
-release instead.
+By default the Action installs the latest roschema release on every run, so new
+rules can change results without any change on your side. Set `version` to pin
+a release instead. A lockfile or directory baseline needs no `fetch-depth: 0`,
+because it is part of the checkout.
+
+## Troubleshooting
+
+**"no breaking changes found", but you expected some.** Run `roschema ls` with
+the same target to see which packages and interfaces are discovered, then check
+that:
+
+- the packages are not below a `COLCON_IGNORE` or `AMENT_IGNORE` marker;
+- a package-name target did not fall back to the installed copy (the warning
+  says so); run from the directory that contains the source, or pass its path;
+- packages in git submodules were not skipped (the warning names any submodule
+  whose baseline commit is missing; fetch it with `git submodule update`);
+- the change's level is included: a constant change is not reported under
+  `--level wire`, and `bag-check` defaults to `wire`.
+
+**A configuration error names an unknown key.** Each table accepts only the keys
+shown in [Configuration](#configuration); the error suggests the closest one.
 
 ## Rule reference
 
-Every rule, its levels, default severity and rationale is documented in
-[docs/rules.md](docs/rules.md), generated from the rule metadata with
-`python -m roschema.rules.gendocs`.
+Every rule, its levels, default severity, rationale and an example is
+documented in [docs/rules.md](docs/rules.md), generated from the rule metadata.
 
 ## Non-goals
 
@@ -318,3 +434,8 @@ These are complementary layers, not alternatives:
 
 roschema is the earliest gate: catch the break in review so the later layers
 never have to.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, checks and
+release process.
