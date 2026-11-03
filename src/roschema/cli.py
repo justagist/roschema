@@ -88,7 +88,10 @@ def check(
     ] = None,
     against: Annotated[
         str,
-        typer.Option("--against", help="Baseline: git ref or directory path."),
+        typer.Option(
+            "--against",
+            help="Baseline: git ref, directory, MCAP bag (.mcap) or lockfile (.lock).",
+        ),
     ] = ...,  # type: ignore[assignment]
     fmt: Annotated[
         str, typer.Option("--format", help="Output format: text, json or github.")
