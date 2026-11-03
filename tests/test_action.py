@@ -27,7 +27,7 @@ def _run_action(tmp_path: Path, inputs: dict[str, str]) -> tuple[list[str], bool
     (tmp_path / "vendor_example").touch()
     env = {
         **os.environ,
-        **{f"ROSCHEMA_{name.upper()}": value for name, value in inputs.items()},
+        **{f"ROSCHEMA_{name.upper().replace('-', '_')}": value for name, value in inputs.items()},
         "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
         "ARGUMENTS_FILE": str(arguments),
         "INJECTION_MARKER": str(injection_marker),
@@ -52,7 +52,19 @@ def _action_defaults() -> dict[str, str]:
 
 
 @pytest.mark.parametrize(
-    "attack_input", [None, "target", "against", "level", "format", "deep", "exclude", "version"]
+    "attack_input",
+    [
+        None,
+        "target",
+        "against",
+        "level",
+        "format",
+        "deep",
+        "allow-empty",
+        "warnings-as-errors",
+        "exclude",
+        "version",
+    ],
 )
 def test_action_passes_inputs_literally(tmp_path, attack_input):
     inputs = {
@@ -61,11 +73,14 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
         "level": "source",
         "format": "github",
         "deep": "true",
+        "allow-empty": "true",
+        "warnings-as-errors": "true",
         "exclude": "vendor_* legacy_msgs/msg/Old",
         "version": "roschema==0.1.2",
     }
     if attack_input is None:
-        inputs["deep"], inputs["exclude"] = "false", ""
+        inputs.update({"deep": "false", "allow-empty": "false", "warnings-as-errors": "false"})
+        inputs["exclude"] = ""
     else:
         inputs[attack_input] = '$(touch "$INJECTION_MARKER") `touch "$INJECTION_MARKER"` "quoted"'
         if attack_input == "exclude":
@@ -87,8 +102,9 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
         "--level",
         inputs["level"],
     ]
-    if inputs["deep"] == "true":
-        expected.append("--deep")
+    for name in ("deep", "allow-empty", "warnings-as-errors"):
+        if inputs[name] == "true":
+            expected.append(f"--{name}")
     for pattern in inputs["exclude"].split():
         expected.extend(["--exclude", pattern])
     assert actual == expected

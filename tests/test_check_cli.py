@@ -59,6 +59,51 @@ def test_check_warning_only_exits_0(tmp_path):
     assert "RS008" in result.stdout
 
 
+def test_check_warnings_as_errors_fails_on_warning(tmp_path):
+    write_package(tmp_path / "old", "my_msgs", msgs={"S": "uint8[<=4] a\n"})
+    write_package(tmp_path / "new", "my_msgs", msgs={"S": "uint8[<=9] a\n"})
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            str(tmp_path / "new"),
+            "--against",
+            str(tmp_path / "old"),
+            "--warnings-as-errors",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "RS008 warn" in result.stdout
+
+
+def test_check_reports_coverage(tmp_path):
+    write_package(tmp_path / "old", "my_msgs", msgs={"A": "int32 a\n", "B": "int32 b\n"})
+    write_package(tmp_path / "new", "my_msgs", msgs={"A": "int32 a\n", "C": "int32 c\n"})
+    write_package(tmp_path / "new", "other_msgs", msgs={"D": "int32 d\n"})
+    result = runner.invoke(
+        app, ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
+    )
+    assert (
+        "compared 1 interface(s) in 2 package(s); 2 only in the target, 1 only in the baseline"
+        in result.stdout
+    )
+
+
+def test_check_empty_baseline_is_an_error(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    (repo / "README").write_text("no interfaces yet\n")
+    git_commit_all(repo, "v1")
+    write_package(repo, "my_msgs", msgs={"Pose": "float32 theta\n"})
+
+    result = runner.invoke(app, ["check", str(repo), "--against", "HEAD"])
+    assert result.exit_code == 2
+    assert "the baseline (git:HEAD) has no interfaces" in result.output
+
+    allowed = runner.invoke(app, ["check", str(repo), "--against", "HEAD", "--allow-empty"])
+    assert allowed.exit_code == 0
+    assert "compared 0 interface(s) in 1 package(s); 1 only in the target" in allowed.stdout
+
+
 def test_check_exit_zero_flag(tmp_path):
     write_package(tmp_path / "old", "my_msgs", msgs={"Pose": "float32 theta\n"})
     write_package(tmp_path / "new", "my_msgs", msgs={"Pose": "float64 theta\n"})
@@ -103,6 +148,22 @@ def test_github_no_prefix_at_repo_root(tmp_path):
     result = runner.invoke(app, ["check", str(repo), "--against", "HEAD", "--format", "github"])
     assert result.exit_code == 1
     assert "file=src/pkg/msg/A.msg" in result.stdout  # VFS-relative already full
+
+
+def test_github_unlocated_findings_use_interface_file(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo / "src", "pkg", msgs={"A": "int32 a\nint32 b\nint32 c\n"})
+    git_commit_all(repo, "v1")
+    (repo / "src" / "pkg" / "msg" / "A.msg").write_text("int32 b\nint32 a\n")
+
+    result = runner.invoke(
+        app, ["check", str(repo / "src" / "pkg"), "--against", "HEAD", "--format", "github"]
+    )
+    assert result.exit_code == 1
+    annotations = [line for line in result.stdout.splitlines() if line.startswith("::")]
+    lines = {line.split("::")[1].split(",title=")[1]: line for line in annotations}
+    assert lines["RS001"].startswith("::error file=src/pkg/msg/A.msg,title=RS001::")
+    assert lines["RS004"].startswith("::error file=src/pkg/msg/A.msg,title=RS004::")
 
 
 def test_json_paths_stay_vfs_relative(tmp_path):

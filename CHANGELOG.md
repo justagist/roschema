@@ -3,6 +3,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-03
+
+### Added
+
+- Reports say how many interfaces were compared, and on which side the rest
+  exist only (JSON: `coverage`).
+- `--warnings-as-errors` for `check`, `bag-check` and `lint`, and the Action's
+  `warnings-as-errors` input.
+
+### Changed
+
+- Python 3.14 is supported and tested.
+- An empty baseline is an error (exit `2`) instead of a silent pass; pass
+  `--allow-empty` (Action: `allow-empty`) when that is expected.
+
+### Fixed
+
+- `--format github` attaches findings with no new-side location, such as a
+  removed field or a reorder, to the interface's file instead of leaving GitHub
+  to show them against the workflow file.
+- The Action uses `astral-sh/setup-uv@v10.3.3` (Node 24) with its cache off,
+  removing the Node 20 deprecation and missing `uv.lock` warnings.
+
 ## [0.2.1] - 2026-11-03
 
 ### Added

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from ..rules import Finding
@@ -25,6 +26,42 @@ class Summary:
     warnings: int
     suppressed: int
     advisories: tuple[PackageAdvisory, ...]
+
+
+@dataclass(frozen=True)
+class Coverage:
+    """How many interfaces a check compared, counted across both sides."""
+
+    packages: int
+    compared: int  # present on both sides
+    target_only: int
+    baseline_only: int
+
+    @property
+    def baseline_empty(self) -> bool:
+        """True when the baseline holds no interfaces, so nothing can break."""
+        return self.compared + self.baseline_only == 0
+
+    def describe(self) -> str:
+        """One-line description, e.g. ``compared 3 interface(s) in 1 package(s)``."""
+        text = f"compared {self.compared} interface(s) in {self.packages} package(s)"
+        extra = [
+            f"{count} only in the {side}"
+            for count, side in ((self.target_only, "target"), (self.baseline_only, "baseline"))
+            if count
+        ]
+        return f"{text}; {', '.join(extra)}" if extra else text
+
+
+def coverage(old: Collection[str], new: Collection[str]) -> Coverage:
+    """Count the interface keys (``package/kind/name``) on each side of a check."""
+    old_keys, new_keys = set(old), set(new)
+    return Coverage(
+        packages=len({key.split("/", 1)[0] for key in old_keys | new_keys}),
+        compared=len(old_keys & new_keys),
+        target_only=len(new_keys - old_keys),
+        baseline_only=len(old_keys - new_keys),
+    )
 
 
 def summarize(findings: list[Finding]) -> Summary:

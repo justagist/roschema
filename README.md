@@ -119,7 +119,8 @@ roschema ls
 
 ```
 roschema check [TARGET] --against BASELINE [--level LEVEL] [--format text|json|github]
-               [--deep | --no-deep] [--exit-zero] [--config PATH] [--exclude GLOB]
+               [--deep | --no-deep] [--exit-zero] [--warnings-as-errors] [--allow-empty]
+               [--config PATH] [--exclude GLOB]
 ```
 
 `TARGET` selects what to check; omit it to check every interface package below
@@ -141,6 +142,13 @@ includes colcon's `build/`, `install/` and `log/` directories.
 MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is detected
 automatically. Initialised git submodules are compared at the commit the
 baseline records for them.
+
+Every report says how much was compared, for example `compared 12 interface(s)
+in 3 package(s); 1 only in the target`. A baseline with no interfaces at all is
+an error (exit `2`): every current interface would look newly added, so the
+check would pass without comparing anything. That usually means the wrong
+baseline or target; on the pull request that adds the first interfaces, pass
+`--allow-empty`.
 
 Limitations:
 
@@ -165,7 +173,7 @@ followed.
 
 ```
 roschema lint [TARGET] [--format text|json|github] [--rules RULE=SEV] [--exit-zero]
-              [--config PATH] [--exclude GLOB]
+              [--warnings-as-errors] [--config PATH] [--exclude GLOB]
 roschema fmt  [TARGET] [--check] [--exclude GLOB]
 ```
 
@@ -204,7 +212,8 @@ same. Comparison ignores it.
 
 ```
 roschema bag-check BAG.mcap [TARGETS...] [--level LEVEL] [--config PATH]
-                   [--format text|json|github] [--exit-zero] [--exclude GLOB]
+                   [--format text|json|github] [--exit-zero] [--warnings-as-errors]
+                   [--exclude GLOB]
 ```
 
 Needs the `bag` extra (`uv tool install 'roschema[bag]'`).
@@ -293,8 +302,8 @@ allow every rule for that target.
 
 ## Output
 
-**Text** (the default) groups findings by package and ends with a summary and a
-semver advice per package:
+**Text** (the default) starts with what was compared, groups findings by
+package and ends with a summary and a semver advice per package:
 
 - **MAJOR** when the package has a wire- or source-level error;
 - **MINOR** when its only notable change is an added field (RS002) whose
@@ -304,8 +313,8 @@ semver advice per package:
 The advice only covers reported findings. Additions such as a new interface or
 constant are not findings, so they never raise the advice to MINOR on their own.
 
-**`--format github`** emits `::error`/`::warning` workflow commands, which GitHub
-shows as annotations on the PR diff.
+**`--format github`** prints what was compared, then emits `::error`/`::warning`
+workflow commands, which GitHub shows as annotations on the PR diff.
 
 **`--format json`** emits a stable document (`version: 1`):
 
@@ -333,12 +342,19 @@ shows as annotations on the PR diff.
     "warnings": 0,
     "suppressed": 0,
     "advisories": { "my_msgs": "MAJOR" }
+  },
+  "coverage": {
+    "packages": 1,
+    "compared": 1,
+    "target_only": 0,
+    "baseline_only": 0
   }
 }
 ```
 
 `old`/`new` are `null` when there is no corresponding side (a removed interface
-has no `new`). `lint` output has no `advisories`.
+has no `new`). `coverage` counts interfaces present on both sides (`compared`)
+and on one side only. `lint` output has no `advisories` or `coverage`.
 
 ## Exit codes
 
@@ -346,10 +362,11 @@ has no `new`). `lint` output has no `advisories`.
 |---|---|---|---|
 | `0` | no unsuppressed errors (warnings allowed) | every file formatted | success |
 | `1` | at least one unsuppressed error | a file would change | n/a |
-| `2` | tool or usage error (bad target, baseline, configuration or file) | tool or usage error | tool or usage error |
+| `2` | tool or usage error (bad target, baseline, configuration or file, or an empty baseline) | tool or usage error | tool or usage error |
 
-`--exit-zero` turns `1` into `0` for `check`, `bag-check` and `lint`; tool
-errors still exit `2`.
+`--warnings-as-errors` makes unsuppressed warnings exit `1` too. `--exit-zero`
+turns `1` into `0` for `check`, `bag-check` and `lint`; tool errors still exit
+`2`.
 
 ## GitHub Action
 
@@ -369,9 +386,10 @@ jobs:
       - uses: justagist/roschema/action@main
         with:
           against: origin/${{ github.base_ref }}
-          # version: "roschema==0.2.1"   # pin a release for reproducible results
+          # version: "roschema==0.3.0"   # pin a release for reproducible results
           # level: source
           # deep: "true"
+          # warnings-as-errors: "true"
           # exclude: "vendor_msgs* legacy_msgs/msg/Old"
 ```
 
@@ -382,6 +400,8 @@ jobs:
 | `level` | (empty) | reporting level; empty uses the configured level, else `source` |
 | `format` | `github` | `text`, `json` or `github` |
 | `deep` | `"false"` | `"true"` adds `--deep` |
+| `allow-empty` | `"false"` | `"true"` adds `--allow-empty` |
+| `warnings-as-errors` | `"false"` | `"true"` adds `--warnings-as-errors` |
 | `exclude` | (empty) | whitespace-separated globs passed as `--exclude` |
 | `version` | `roschema` | the roschema requirement installed with `uvx` |
 
@@ -392,9 +412,9 @@ because it is part of the checkout.
 
 ## Troubleshooting
 
-**"no breaking changes found", but you expected some.** Run `roschema ls` with
-the same target to see which packages and interfaces are discovered, then check
-that:
+**"no breaking changes found", but you expected some.** The line under the
+header says how many interfaces were compared. Run `roschema ls` with the same
+target to see which packages and interfaces are discovered, then check that:
 
 - the packages are not below a `COLCON_IGNORE` or `AMENT_IGNORE` marker;
 - a package-name target did not fall back to the installed copy (the warning

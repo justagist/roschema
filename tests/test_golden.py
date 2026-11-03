@@ -12,7 +12,7 @@ from roschema.config import Config, finalize_findings
 from roschema.differ import diff_interfaces
 from roschema.discovery import discover
 from roschema.loader import load_interfaces
-from roschema.report import build_json
+from roschema.report import build_json, coverage
 from roschema.rules import evaluate
 from roschema.vfs import RealFS
 
@@ -26,10 +26,9 @@ def _load(side: str):
 
 
 def test_golden_pipeline_matches():
-    findings = finalize_findings(
-        evaluate(diff_interfaces(_load("ws_old"), _load("ws_new"))), Config(), None
-    )
-    doc = build_json(findings)
+    old, new = _load("ws_old"), _load("ws_new")
+    findings = finalize_findings(evaluate(diff_interfaces(old, new)), Config(), None)
+    doc = build_json(findings, coverage=coverage(old, new))
     golden = json.loads((FIXTURES / "golden_check.json").read_text())
     assert doc == golden
 

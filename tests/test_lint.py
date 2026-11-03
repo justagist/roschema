@@ -112,6 +112,14 @@ def test_cli_lint_rules_bare_means_warn(tmp_path):
     assert "RSL004" in result.stdout
 
 
+def test_cli_lint_warnings_as_errors(tmp_path):
+    write_package(tmp_path, "p", msgs={"Good": "int32 good_field\n"})
+    result = runner.invoke(
+        app, ["lint", str(tmp_path), "--rules", "RSL004", "--warnings-as-errors"]
+    )
+    assert result.exit_code == 1
+
+
 def test_cli_lint_rules_off_beats_config(tmp_path):
     (tmp_path / "roschema.toml").write_text('[lint.rules]\nRSL001 = "error"\n')
     write_package(tmp_path, "p", msgs={"Bad": "int32 BadField  # doc\n"})
