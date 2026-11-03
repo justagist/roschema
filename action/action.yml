@@ -23,8 +23,7 @@ inputs:
   exclude:
     description: >-
       Whitespace-separated globs of packages/interfaces to skip. Split on
-      whitespace only; pathname expansion is disabled so patterns reach
-      roschema literally.
+      whitespace only so patterns reach roschema literally.
     default: ""
   version:
     description: roschema version/specifier for uvx (e.g. "roschema==0.1.0").
@@ -35,17 +34,25 @@ runs:
   steps:
     - uses: astral-sh/setup-uv@v5
     - shell: bash
+      env:
+        ROSCHEMA_TARGET: ${{ inputs.target }}
+        ROSCHEMA_AGAINST: ${{ inputs.against }}
+        ROSCHEMA_LEVEL: ${{ inputs.level }}
+        ROSCHEMA_FORMAT: ${{ inputs.format }}
+        ROSCHEMA_DEEP: ${{ inputs.deep }}
+        ROSCHEMA_EXCLUDE: ${{ inputs.exclude }}
+        ROSCHEMA_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        set -f  # disable pathname expansion; exclude patterns must reach roschema literally
-        args=(check "${{ inputs.target }}"
-              --against "${{ inputs.against }}"
-              --level "${{ inputs.level }}"
-              --format "${{ inputs.format }}")
-        if [ "${{ inputs.deep }}" = "true" ]; then
+        args=(check "$ROSCHEMA_TARGET"
+              --against "$ROSCHEMA_AGAINST"
+              --level "$ROSCHEMA_LEVEL"
+              --format "$ROSCHEMA_FORMAT")
+        if [ "$ROSCHEMA_DEEP" = "true" ]; then
           args+=(--deep)
         fi
-        for glob in ${{ inputs.exclude }}; do
+        read -r -a excludes <<< "${ROSCHEMA_EXCLUDE//$'\n'/ }"
+        for glob in "${excludes[@]}"; do
           args+=(--exclude "$glob")
         done
-        uvx --from "${{ inputs.version }}" roschema "${args[@]}"
+        uvx --from "$ROSCHEMA_VERSION" roschema "${args[@]}"
