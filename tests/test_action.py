@@ -13,16 +13,12 @@ _ACTION = Path(__file__).resolve().parents[1] / "action" / "action.yml"
 
 
 def _run_action(
-    tmp_path: Path,
-    inputs: dict[str, str],
-    step_summary: str | None = None,
-    help_text: str = "--summary",
+    tmp_path: Path, inputs: dict[str, str], step_summary: str | None = None
 ) -> tuple[list[str], bool]:
-    """Run the Action's script with ``inputs``; return the check's uvx arguments and injection.
+    """Run the Action's script with ``inputs``; return uvx's arguments and injection.
 
     ``step_summary`` stands in for the runner's ``GITHUB_STEP_SUMMARY``, which is
-    otherwise unset even when the tests themselves run in GitHub Actions, and
-    ``help_text`` for the installed roschema's ``check --help``.
+    otherwise unset even when the tests themselves run in GitHub Actions.
     """
     action = _ACTION.read_text()
     script = textwrap.dedent(action.split("      run: |\n", 1)[1])
@@ -30,12 +26,7 @@ def _run_action(
     for name, value in inputs.items():
         script = script.replace("${{ inputs." + name + " }}", value)
     uvx = tmp_path / "uvx"
-    uvx.write_text(
-        "#!/bin/bash\n"
-        'if [ "${@: -1}" = --help ]; then printf "%s\\0" "$@" > "$HELP_ARGUMENTS_FILE"; '
-        'echo "$HELP_TEXT"; exit 0; fi\n'
-        'printf "%s\\0" "$@" > "$ARGUMENTS_FILE"\n'
-    )
+    uvx.write_text('#!/bin/bash\nprintf "%s\\0" "$@" > "$ARGUMENTS_FILE"\n')
     uvx.chmod(0o755)
     arguments = tmp_path / "arguments"
     injection_marker = tmp_path / "executed"
@@ -45,8 +36,6 @@ def _run_action(
         **{f"ROSCHEMA_{name.upper().replace('-', '_')}": value for name, value in inputs.items()},
         "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
         "ARGUMENTS_FILE": str(arguments),
-        "HELP_ARGUMENTS_FILE": str(tmp_path / "help_arguments"),
-        "HELP_TEXT": help_text,
         "INJECTION_MARKER": str(injection_marker),
         **({"GITHUB_STEP_SUMMARY": step_summary} if step_summary is not None else {}),
     }
@@ -105,17 +94,9 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
             inputs["exclude"] += "\nvendor_*\tlegacy_?"
     actual, injected = _run_action(tmp_path, inputs)
     assert not injected, "Action executed shell code from an input"
-    help_call = (tmp_path / "help_arguments").read_bytes().decode().split("\0")[:-1]
-    assert help_call == [
+    expected = [
         "--refresh-package",
         "roschema",
-        "--from",
-        inputs["version"],
-        "roschema",
-        "check",
-        "--help",
-    ]
-    expected = [
         "--from",
         inputs["version"],
         "roschema",
@@ -146,11 +127,3 @@ def test_action_writes_job_summary(tmp_path):
     summary = str(tmp_path / "step summary.md")
     actual, _ = _run_action(tmp_path, _action_defaults(), step_summary=summary)
     assert actual[-2:] == ["--summary", summary]
-
-
-def test_action_skips_job_summary_for_releases_without_it(tmp_path):
-    summary = str(tmp_path / "summary.md")
-    actual, _ = _run_action(
-        tmp_path, _action_defaults(), step_summary=summary, help_text="--exit-zero --deep"
-    )
-    assert "--summary" not in actual
