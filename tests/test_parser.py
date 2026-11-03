@@ -219,6 +219,24 @@ def test_error_constant_complex_type_rejected():
     assert "primitive" in e.value.message
 
 
+@pytest.mark.parametrize(
+    "src,message,col",
+    [
+        ("int32 a\nfloat64 a\n", "duplicate field name 'a'", 9),
+        ("int32 A=1\nint32 A=2\n", "duplicate constant name 'A'", 7),
+    ],
+)
+def test_error_duplicate_member_name(src, message, col):
+    with pytest.raises(ParseError) as e:
+        _msg(src)
+    assert e.value.message == message
+    assert (e.value.line, e.value.col) == (2, col)
+
+
+def test_same_name_in_different_sections_parses():
+    parse_text("int32 a\n---\nint32 a\n", "p/srv/T.srv", "p", "T", "srv")
+
+
 def test_parse_file_derives_identity(tmp_path):
     from roschema.parser import parse_file
 

@@ -97,11 +97,21 @@ def _parse_section(
     lines: list[tuple[int, str]], source_file: str
 ) -> tuple[Field | Constant, ...]:
     members: list[Field | Constant] = []
+    seen: set[tuple[type, str]] = set()
     for lineno, raw in lines:
         code, comment = _split_comment(raw)
         if not code.strip():
             continue  # blank or full-line comment: trivia
-        members.append(_parse_member(raw, code, comment, lineno, source_file))
+        member = _parse_member(raw, code, comment, lineno, source_file)
+        # rosidl rejects repeated field names and repeated constant names.
+        if (type(member), member.name) in seen:
+            kind = "constant" if isinstance(member, Constant) else "field"
+            col = raw.index(member.name, len(raw) - len(raw.lstrip()) + len(code.split()[0])) + 1
+            raise ParseError(
+                f"duplicate {kind} name {member.name!r}", source_file, lineno, col, raw
+            )
+        seen.add((type(member), member.name))
+        members.append(member)
     return tuple(members)
 
 
