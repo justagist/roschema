@@ -26,7 +26,7 @@ int32 a
 
 A field was added to an interface section.
 
-- Levels: wire, source
+- Levels: wire
 - Default severity: error
 
 *Rationale:* Appending a field is source-compatible but still changes the CDR wire layout, so a new publisher and an old subscriber cannot interoperate.
@@ -290,11 +290,11 @@ A field has no trailing documentation comment.
 
 ### RSL005 -- Discouraged type
 
-Uses `char`, or a scalar `byte`, both deprecated aliases in ROS 2.
+Uses `char`, or a scalar `byte`, whose generated types are ambiguous.
 
 - Default severity: warn
 
-*Rationale:* ROS 2 deprecated `char` and `byte` as scalar types in favour of `uint8`/`int8`; `byte[]` remains idiomatic for opaque binary data.
+*Rationale:* rosidl generates `char` as `uint8` although the ROS 2 type table lists it as a DDS `char`, and a scalar `byte` becomes a Python `bytes` object rather than an integer; `uint8` states the intent. `byte[]` remains idiomatic for opaque binary data.
 
 ### RSL006 -- Unbounded string or array
 

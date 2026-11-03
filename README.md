@@ -139,7 +139,7 @@ roschema fmt  [TARGET] [--check]
 
 `lint` checks a single tree (no baseline). Naming rules follow rosidl: field
 names snake_case (RSL001), constants UPPER_SNAKE (RSL002), interface names
-PascalCase (RSL003); it also flags deprecated `char`/scalar-`byte` (RSL005) and
+PascalCase (RSL003); it also flags ambiguous `char`/scalar-`byte` (RSL005) and
 request/response field shadowing in services (RSL010). RSL004 (missing doc) and
 RSL006 (unbounded) are off by default; enable via `[lint.rules]` or per run with
 `--rules` (e.g. `--rules RSL004=warn --rules RSL001=off`; a bare `--rules RSL004`

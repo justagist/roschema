@@ -18,7 +18,7 @@ RULE = Rule(
         "Appending a field is source-compatible but still changes the CDR wire "
         "layout, so a new publisher and an old subscriber cannot interoperate."
     ),
-    levels=("wire", "source"),
+    levels=("wire",),
     default_severity=Severity.ERROR,
     handles=(ChangeType.FIELD_ADDED,),
     message=_message,
