@@ -102,9 +102,9 @@ def test_gittreefs_reads_submodules_at_recorded_commit(tmp_path):
     (repo / "vendor" / "pkg_b" / "msg" / "Bar.msg").write_text("int64 b\n")
     git_commit_all(repo / "vendor", "v2")  # moves the checkout, not the recorded commit
 
+    assert GitTreeFS(repo, "HEAD").read_text("vendor/pkg_b/msg/Bar.msg") == "int32 b\n"
     fs = GitTreeFS(repo, "HEAD")
     assert fs.glob("**/*.msg") == ["vendor/pkg_b/msg/Bar.msg"]
-    assert fs.read_text("vendor/pkg_b/msg/Bar.msg") == "int32 b\n"
     assert fs.missing_submodules == []
 
 

@@ -219,6 +219,7 @@ class GitTreeFS:
         return [f"{path}/{f}" for f in sub.files]
 
     def read_text(self, path: str) -> str:
+        _ = self.files  # registers submodules, so reads work before any listing
         for prefix, sub in self._submodules.items():
             if path.startswith(prefix + "/"):
                 return sub.read_text(path[len(prefix) + 1 :])
