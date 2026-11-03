@@ -262,3 +262,24 @@ def test_scalar_pyproject_roschema_section_is_error(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[tool]\nroschema = "invalid"\n')
     with pytest.raises(ConfigError):
         load_config(tmp_path, ())
+
+
+@pytest.mark.parametrize(
+    "toml,message",
+    [
+        ('[chek]\nlevel = "wire"\n', "configuration: unknown key 'chek'; did you mean 'check'?"),
+        ('[check]\nlevle = "wire"\n', "[check]: unknown key 'levle'; did you mean 'level'?"),
+        ('[check.rule]\nRS002 = "off"\n', "[check]: unknown key 'rule'; did you mean 'rules'?"),
+        ('[lint.rule]\nRSL001 = "off"\n', "[lint]: unknown key 'rule'; did you mean 'rules'?"),
+        (
+            '[check.allow]\n"p/msg/T.a" = {reason = "x", rule = ["RS001"]}\n',
+            "allowlist entry 'p/msg/T.a': unknown key 'rule'; did you mean 'rules'?",
+        ),
+    ],
+)
+def test_unknown_keys_are_configuration_errors(tmp_path, toml, message):
+    """Misspelt settings must fail rather than silently fall back to defaults."""
+    (tmp_path / "roschema.toml").write_text(toml)
+    with pytest.raises(ConfigError) as exc:
+        load_config(tmp_path, ())
+    assert str(exc.value) == message

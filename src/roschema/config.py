@@ -6,6 +6,7 @@ Precedence is CLI flags > per-package ``roschema.toml`` > workspace config
 
 from __future__ import annotations
 
+import difflib
 import sys
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -247,8 +248,10 @@ def _read_toml(path: Path) -> dict[str, object]:
 
 def _parse_loaded(data: dict[str, object]) -> tuple[ScopeConfig, dict[str, str]]:
     """Parse check and lint settings from a configuration table."""
+    _reject_unknown(data, ("check", "lint"), "configuration")
     scope = _parse_scope(data)
     lint = _as_dict(data.get("lint"), "[lint]")
+    _reject_unknown(lint, ("rules",), "[lint]")
     lint_rules = _parse_rules(_as_dict(lint.get("rules"), "[lint.rules]"), where="[lint.rules]")
     return scope, lint_rules
 
@@ -256,6 +259,7 @@ def _parse_loaded(data: dict[str, object]) -> tuple[ScopeConfig, dict[str, str]]
 def _parse_scope(data: dict[str, object]) -> ScopeConfig:
     """Validate a check scope and parse its overrides and allowlist."""
     check = _as_dict(data.get("check"), "[check]")
+    _reject_unknown(check, ("level", "deep", "rules", "allow"), "[check]")
     level = check.get("level")
     if level is not None and (not isinstance(level, str) or level not in LEVEL_BUNDLES):
         raise ConfigError(
@@ -294,6 +298,7 @@ def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
     entries: list[AllowEntry] = []
     for target, spec in raw.items():
         spec_dict = _as_dict(spec, f"allowlist entry {target!r}")
+        _reject_unknown(spec_dict, ("rules", "reason"), f"allowlist entry {target!r}")
         reason = spec_dict.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             raise ConfigError(
@@ -308,6 +313,15 @@ def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
             raise ConfigError(f"allowlist entry {target!r}: unknown rule IDs {sorted(unknown)}")
         entries.append(AllowEntry(target=target, rules=rules, reason=reason))
     return tuple(entries)
+
+
+def _reject_unknown(table: dict[str, object], known: tuple[str, ...], where: str) -> None:
+    """Reject misspelt or unsupported keys so their settings never silently do nothing."""
+    for key in table:
+        if key not in known:
+            close = difflib.get_close_matches(key, known, n=1)
+            hint = f"; did you mean {close[0]!r}?" if close else f"; expected one of {list(known)}"
+            raise ConfigError(f"{where}: unknown key {key!r}{hint}")
 
 
 def _as_dict(value: object, where: str) -> dict[str, object]:
