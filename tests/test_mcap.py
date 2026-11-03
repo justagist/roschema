@@ -46,6 +46,11 @@ def test_split_ros2msg_service_event_and_empty_message():
         "demo_srvs/srv/Add": "int64 a\n---\nint64 sum"
     }
     assert _split_ros2msg("std_msgs/msg/Empty", "") == {"std_msgs/msg/Empty": ""}
+    holder = "std_msgs/Empty e\n" + "=" * 80 + "\nMSG: std_msgs/Empty\n"
+    assert _split_ros2msg("demo/msg/Holder", holder) == {
+        "demo/msg/Holder": "std_msgs/Empty e",
+        "std_msgs/msg/Empty": "",
+    }
 
 
 def test_convert_ros2idl_subset():

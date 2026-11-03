@@ -129,28 +129,29 @@ def _split_ros2msg(main_name: str, text: str) -> dict[str, str]:
     """Split a concatenated ros2msg definition into ``{pkg/kind/Name: body}``.
 
     A service event schema has an empty main block followed by an ``SRV:``
-    block, so an empty main block is kept only when it is the whole schema (a
-    message without fields, such as ``std_msgs/msg/Empty``).
+    block, so only an empty main block with other blocks after it is dropped;
+    field-less messages (``std_msgs/msg/Empty``) are kept, main or dependency.
     """
-    blocks: dict[str, str] = {}
+    sections: list[tuple[str, str]] = []
     current = _key("MSG", main_name)
     lines: list[str] = []
     iterator = iter(text.splitlines())
     for line in iterator:
         if _SEPARATOR.match(line.strip()):
-            _store_block(blocks, current, lines)
+            sections.append((current, "\n".join(lines).strip("\n")))
             lines = []
             current = _next_header(iterator, main_name)
             continue
         lines.append(line)
-    _store_block(blocks, current, lines)
-    return blocks or {_key("MSG", main_name): ""}
+    sections.append((current, "\n".join(lines).strip("\n")))
 
-
-def _store_block(blocks: dict[str, str], key: str, lines: list[str]) -> None:
-    body = "\n".join(lines).strip("\n")
-    if body.strip():
+    (main_key, main_body), dependencies = sections[0], sections[1:]
+    blocks: dict[str, str] = {}
+    if main_body.strip() or not dependencies:
+        _store_definition(blocks, main_key, main_body)
+    for key, body in dependencies:
         _store_definition(blocks, key, body)
+    return blocks
 
 
 def _next_header(iterator: object, fallback: str) -> str:
