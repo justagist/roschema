@@ -27,6 +27,9 @@ inputs:
       Pass when the baseline has no interfaces, e.g. on the pull request that
       adds the first ones. Otherwise an empty baseline fails the step.
     default: "false"
+  warnings-as-errors:
+    description: Fail the step on warnings as well as errors.
+    default: "false"
   exclude:
     description: >-
       Whitespace-separated globs of packages/interfaces to skip. Split on
@@ -55,6 +58,7 @@ runs:
         ROSCHEMA_FORMAT: ${{ inputs.format }}
         ROSCHEMA_DEEP: ${{ inputs.deep }}
         ROSCHEMA_ALLOW_EMPTY: ${{ inputs.allow-empty }}
+        ROSCHEMA_WARNINGS_AS_ERRORS: ${{ inputs.warnings-as-errors }}
         ROSCHEMA_EXCLUDE: ${{ inputs.exclude }}
         ROSCHEMA_VERSION: ${{ inputs.version }}
       run: |
@@ -70,6 +74,9 @@ runs:
         fi
         if [ "$ROSCHEMA_ALLOW_EMPTY" = "true" ]; then
           args+=(--allow-empty)
+        fi
+        if [ "$ROSCHEMA_WARNINGS_AS_ERRORS" = "true" ]; then
+          args+=(--warnings-as-errors)
         fi
         read -r -a excludes <<< "${ROSCHEMA_EXCLUDE//$'\n'/ }"
         for glob in "${excludes[@]}"; do

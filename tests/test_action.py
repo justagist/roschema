@@ -61,6 +61,7 @@ def _action_defaults() -> dict[str, str]:
         "format",
         "deep",
         "allow-empty",
+        "warnings-as-errors",
         "exclude",
         "version",
     ],
@@ -73,11 +74,12 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
         "format": "github",
         "deep": "true",
         "allow-empty": "true",
+        "warnings-as-errors": "true",
         "exclude": "vendor_* legacy_msgs/msg/Old",
         "version": "roschema==0.1.2",
     }
     if attack_input is None:
-        inputs.update({"deep": "false", "allow-empty": "false"})
+        inputs.update({"deep": "false", "allow-empty": "false", "warnings-as-errors": "false"})
         inputs["exclude"] = ""
     else:
         inputs[attack_input] = '$(touch "$INJECTION_MARKER") `touch "$INJECTION_MARKER"` "quoted"'
@@ -100,7 +102,7 @@ def test_action_passes_inputs_literally(tmp_path, attack_input):
         "--level",
         inputs["level"],
     ]
-    for name in ("deep", "allow-empty"):
+    for name in ("deep", "allow-empty", "warnings-as-errors"):
         if inputs[name] == "true":
             expected.append(f"--{name}")
     for pattern in inputs["exclude"].split():

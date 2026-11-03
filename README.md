@@ -119,7 +119,7 @@ roschema ls
 
 ```
 roschema check [TARGET] --against BASELINE [--level LEVEL] [--format text|json|github]
-               [--deep | --no-deep] [--exit-zero] [--allow-empty]
+               [--deep | --no-deep] [--exit-zero] [--warnings-as-errors] [--allow-empty]
                [--config PATH] [--exclude GLOB]
 ```
 
@@ -173,7 +173,7 @@ followed.
 
 ```
 roschema lint [TARGET] [--format text|json|github] [--rules RULE=SEV] [--exit-zero]
-              [--config PATH] [--exclude GLOB]
+              [--warnings-as-errors] [--config PATH] [--exclude GLOB]
 roschema fmt  [TARGET] [--check] [--exclude GLOB]
 ```
 
@@ -212,7 +212,8 @@ same. Comparison ignores it.
 
 ```
 roschema bag-check BAG.mcap [TARGETS...] [--level LEVEL] [--config PATH]
-                   [--format text|json|github] [--exit-zero] [--exclude GLOB]
+                   [--format text|json|github] [--exit-zero] [--warnings-as-errors]
+                   [--exclude GLOB]
 ```
 
 Needs the `bag` extra (`uv tool install 'roschema[bag]'`).
@@ -363,8 +364,9 @@ and on one side only. `lint` output has no `advisories` or `coverage`.
 | `1` | at least one unsuppressed error | a file would change | n/a |
 | `2` | tool or usage error (bad target, baseline, configuration or file, or an empty baseline) | tool or usage error | tool or usage error |
 
-`--exit-zero` turns `1` into `0` for `check`, `bag-check` and `lint`; tool
-errors still exit `2`.
+`--warnings-as-errors` makes unsuppressed warnings exit `1` too. `--exit-zero`
+turns `1` into `0` for `check`, `bag-check` and `lint`; tool errors still exit
+`2`.
 
 ## GitHub Action
 
@@ -387,6 +389,7 @@ jobs:
           # version: "roschema==0.2.1"   # pin a release for reproducible results
           # level: source
           # deep: "true"
+          # warnings-as-errors: "true"
           # exclude: "vendor_msgs* legacy_msgs/msg/Old"
 ```
 
@@ -398,6 +401,7 @@ jobs:
 | `format` | `github` | `text`, `json` or `github` |
 | `deep` | `"false"` | `"true"` adds `--deep` |
 | `allow-empty` | `"false"` | `"true"` adds `--allow-empty` |
+| `warnings-as-errors` | `"false"` | `"true"` adds `--warnings-as-errors` |
 | `exclude` | (empty) | whitespace-separated globs passed as `--exclude` |
 | `version` | `roschema` | the roschema requirement installed with `uvx` |
 

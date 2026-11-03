@@ -59,6 +59,23 @@ def test_check_warning_only_exits_0(tmp_path):
     assert "RS008" in result.stdout
 
 
+def test_check_warnings_as_errors_fails_on_warning(tmp_path):
+    write_package(tmp_path / "old", "my_msgs", msgs={"S": "uint8[<=4] a\n"})
+    write_package(tmp_path / "new", "my_msgs", msgs={"S": "uint8[<=9] a\n"})
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            str(tmp_path / "new"),
+            "--against",
+            str(tmp_path / "old"),
+            "--warnings-as-errors",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "RS008 warn" in result.stdout
+
+
 def test_check_reports_coverage(tmp_path):
     write_package(tmp_path / "old", "my_msgs", msgs={"A": "int32 a\n", "B": "int32 b\n"})
     write_package(tmp_path / "new", "my_msgs", msgs={"A": "int32 a\n", "C": "int32 c\n"})

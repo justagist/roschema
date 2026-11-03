@@ -113,6 +113,10 @@ def check(
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
+    warnings_as_errors: Annotated[
+        bool,
+        typer.Option("--warnings-as-errors", help="Exit 1 on warnings as well as errors."),
+    ] = False,
     allow_empty: Annotated[
         bool,
         typer.Option(
@@ -148,7 +152,7 @@ def check(
         )
     _require_baseline(cov, f"the baseline ({old_source})", allow_empty)
     _emit(findings, fmt, new_source, old_source, cov, prefix, files)
-    _exit_for(findings, exit_zero)
+    _exit_for(findings, exit_zero, warnings_as_errors)
 
 
 @app.command(name="bag-check")
@@ -177,6 +181,10 @@ def bag_check(
     ] = None,
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
+    ] = False,
+    warnings_as_errors: Annotated[
+        bool,
+        typer.Option("--warnings-as-errors", help="Exit 1 on warnings as well as errors."),
     ] = False,
     exclude: Annotated[
         list[str] | None,
@@ -219,7 +227,7 @@ def bag_check(
     cov = coverage(old_ifaces, new_ifaces)
     _require_baseline(cov, "the bag", allow_empty=False)
     _emit(findings, fmt, new_source, old_res.source, cov)
-    _exit_for(findings, exit_zero)
+    _exit_for(findings, exit_zero, warnings_as_errors)
 
 
 def _resolve_current(
@@ -356,11 +364,13 @@ def _require_baseline(cov: Coverage, baseline: str, allow_empty: bool) -> None:
         raise typer.Exit(code=2)
 
 
-def _exit_for(findings: list[Finding], exit_zero: bool) -> None:
+def _exit_for(findings: list[Finding], exit_zero: bool, warnings_as_errors: bool) -> None:
+    """Exit 1 if an unsuppressed finding fails the check, else 0."""
     if exit_zero:
         raise typer.Exit(code=0)
-    has_error = any(f.severity == "error" and not f.suppressed for f in findings)
-    raise typer.Exit(code=1 if has_error else 0)
+    failing = {"error", "warn"} if warnings_as_errors else {"error"}
+    has_failure = any(f.severity in failing and not f.suppressed for f in findings)
+    raise typer.Exit(code=1 if has_failure else 0)
 
 
 def _emit(
@@ -405,6 +415,10 @@ def lint(
     exit_zero: Annotated[
         bool, typer.Option("--exit-zero", help="Exit 0 even when findings exist.")
     ] = False,
+    warnings_as_errors: Annotated[
+        bool,
+        typer.Option("--warnings-as-errors", help="Exit 1 on warnings as well as errors."),
+    ] = False,
     exclude: Annotated[
         list[str] | None,
         typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
@@ -435,10 +449,7 @@ def lint(
     else:
         render_lint(findings, console, res.source)
 
-    if exit_zero:
-        raise typer.Exit(code=0)
-    has_error = any(f.severity == "error" and not f.suppressed for f in findings)
-    raise typer.Exit(code=1 if has_error else 0)
+    _exit_for(findings, exit_zero, warnings_as_errors)
 
 
 def _parse_rule_overrides(items: list[str]) -> dict[str, str]:

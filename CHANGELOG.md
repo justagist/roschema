@@ -9,6 +9,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 - Reports say how many interfaces were compared, and on which side the rest
   exist only (JSON: `coverage`).
+- `--warnings-as-errors` for `check`, `bag-check` and `lint`, and the Action's
+  `warnings-as-errors` input.
 
 ### Changed
 
