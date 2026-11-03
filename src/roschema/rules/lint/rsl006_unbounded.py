@@ -36,4 +36,6 @@ RULE = LintRule(
     ),
     default_severity=Severity.OFF,
     check=_check,
+    example_flagged="float64[] samples\nstring name",
+    example_preferred="float64[<=64] samples\nstring<=32 name",
 )

@@ -30,4 +30,6 @@ RULE = LintRule(
     rationale="rosidl requires constant names to be uppercase; other forms fail generation.",
     default_severity=Severity.ERROR,
     check=_check,
+    example_flagged="int32 maxRetries=3",
+    example_preferred="int32 MAX_RETRIES=3",
 )

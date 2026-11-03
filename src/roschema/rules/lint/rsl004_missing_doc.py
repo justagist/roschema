@@ -32,4 +32,6 @@ RULE = LintRule(
     ),
     default_severity=Severity.OFF,
     check=_check,
+    example_flagged="float64 speed",
+    example_preferred="float64 speed  # metres per second",
 )

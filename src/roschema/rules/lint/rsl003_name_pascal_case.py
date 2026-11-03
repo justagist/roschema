@@ -27,4 +27,6 @@ RULE = LintRule(
     rationale="rosidl requires message type names to start with a capital and be alphanumeric.",
     default_severity=Severity.ERROR,
     check=_check,
+    example_flagged="msg/robot_state.msg",
+    example_preferred="msg/RobotState.msg",
 )

@@ -40,4 +40,6 @@ RULE = LintRule(
     rationale="Reusing a name across request and response is a common source of confusion.",
     default_severity=Severity.WARN,
     check=_check,
+    example_flagged="string name\n---\nstring name",
+    example_preferred="string name\n---\nbool accepted",
 )

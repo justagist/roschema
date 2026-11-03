@@ -6,6 +6,7 @@ the rule reference. A test asserts the committed file stays in sync.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -20,13 +21,40 @@ _HEADER = (
 
 def render_docs() -> str:
     """Render the full rule reference as Markdown."""
-    parts = [_HEADER, "\n## Breaking-change rules (`check`)\n"]
+    parts = [_HEADER, _render_overview(), "\n## Breaking-change rules (`check`)\n"]
     for rule in ALL_BREAKING_RULES:
         parts.append(_render_breaking(rule))
     parts.append("\n## Lint rules (`lint`)\n")
     for lint_rule in ALL_LINT_RULES:
         parts.append(_render_lint(lint_rule))
     return "\n".join(parts).rstrip("\n") + "\n"
+
+
+def _render_overview() -> str:
+    """One row per rule, linking to its section, for scanning what roschema reports."""
+    lines = [
+        "\n## Overview\n",
+        "| Rule | Reports | Levels | Default |",
+        "|---|---|---|---|",
+    ]
+    for rule in ALL_BREAKING_RULES:
+        levels = ", ".join(rule.levels) or "n/a"
+        lines.append(
+            f"| [{rule.id}](#{_anchor(rule)}) | {rule.title} | {levels} | "
+            f"{rule.default_severity.value} |"
+        )
+    for lint_rule in ALL_LINT_RULES:
+        lines.append(
+            f"| [{lint_rule.id}](#{_anchor(lint_rule)}) | {lint_rule.title} | lint | "
+            f"{lint_rule.default_severity.value} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _anchor(rule: Rule | LintRule) -> str:
+    """GitHub's heading anchor for a rule's ``### ID -- Title`` section."""
+    heading = f"{rule.id} -- {rule.title}".lower()
+    return re.sub(r"[^\w\- ]", "", heading).replace(" ", "-")
 
 
 def _render_breaking(rule: Rule) -> str:
@@ -53,20 +81,25 @@ def _render_breaking(rule: Rule) -> str:
 
 
 def _render_lint(rule: LintRule) -> str:
-    return (
-        "\n".join(
-            [
-                f"### {rule.id} -- {rule.title}",
-                "",
-                rule.description,
-                "",
-                f"- Default severity: {rule.default_severity.value}",
-                "",
-                f"*Rationale:* {rule.rationale}",
-            ]
-        )
-        + "\n"
-    )
+    lines = [
+        f"### {rule.id} -- {rule.title}",
+        "",
+        rule.description,
+        "",
+        f"- Default severity: {rule.default_severity.value}",
+        "",
+        f"*Rationale:* {rule.rationale}",
+    ]
+    if rule.example_flagged or rule.example_preferred:
+        lines += [
+            "",
+            "```",
+            f"# flagged\n{rule.example_flagged}",
+            "# preferred",
+            rule.example_preferred,
+            "```",
+        ]
+    return "\n".join(lines) + "\n"
 
 
 _DOCS_PATH = Path("docs/rules.md")

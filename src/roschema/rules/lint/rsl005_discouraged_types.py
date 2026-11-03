@@ -41,4 +41,6 @@ RULE = LintRule(
     ),
     default_severity=Severity.WARN,
     check=_check,
+    example_flagged="char mode\nbyte flag",
+    example_preferred="uint8 mode\nuint8 flag",
 )

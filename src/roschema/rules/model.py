@@ -152,6 +152,7 @@ class LintRule:
         rationale: Why it matters.
         default_severity: Severity when not overridden by config.
         check: Yields a :class:`LintHit` per violation in an interface.
+        example_flagged/example_preferred: Illustrative snippets for the docs.
     """
 
     id: str
@@ -160,3 +161,5 @@ class LintRule:
     rationale: str
     default_severity: Severity
     check: Callable[[InterfaceFile], list[LintHit]]
+    example_flagged: str = ""
+    example_preferred: str = ""

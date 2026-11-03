@@ -33,4 +33,6 @@ RULE = LintRule(
     ),
     default_severity=Severity.ERROR,
     check=_check,
+    example_flagged="float64 MaxSpeed",
+    example_preferred="float64 max_speed",
 )
