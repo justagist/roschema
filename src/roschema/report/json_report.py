@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from ..rules import Finding
 from ..rules.gendocs import docs_url
-from .changes import Change
+from .changes import Change, suppressed_changes
 from .summary import Coverage, summarize
 
 SCHEMA_VERSION = 1
@@ -25,7 +25,7 @@ def build_json(
     ``advisories`` adds per-package semver advice and ``coverage`` the interface
     counts; both only mean something for a comparison against a baseline (not
     for lint). Additions among ``changes`` count towards the advice, and
-    ``verbose`` lists ``changes`` too.
+    ``verbose`` lists ``changes`` and suppressed findings, with their reasons.
     """
     summary = summarize(findings, changes)
     counts: dict[str, object] = {
@@ -52,7 +52,7 @@ def build_json(
                 "message": c.message,
                 "reason": c.reason,
             }
-            for c in changes
+            for c in [*changes, *suppressed_changes(findings)]
         ]
     if coverage is not None:
         doc["coverage"] = {

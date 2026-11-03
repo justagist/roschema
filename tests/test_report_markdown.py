@@ -47,12 +47,12 @@ def test_markdown_lists_findings_advice_and_unreported_changes():
 
 def test_markdown_escapes_table_cells():
     report = build_markdown(
-        [_finding("RS021", 'constant value changed "a|b" -> "c\nd"')],
+        [_finding("RS021", 'constant value changed "a|b" -> "*c*\n[d](e) <b>"')],
         "workspace:/ws",
         "git:main",
         coverage(["demo/msg/T"], ["demo/msg/T"]),
     )
-    assert '| constant value changed "a\\|b" -> "c d" |' in report
+    assert '| constant value changed "a\\|b" -&gt; "\\*c\\* \\[d\\](e) &lt;b&gt;" |' in report
 
 
 def test_markdown_without_findings():

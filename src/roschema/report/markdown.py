@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import re
 from collections.abc import Sequence
 
 from ..rules import Finding
@@ -46,7 +48,7 @@ def build_markdown(
                 location = f"{location}:{line}"
             lines.append(
                 f"| {_rule_link(f.rule)} | {f.severity} | `{_cell(f.qualified_target)}` | "
-                f"{_cell(f.message)} | {f'`{_cell(location)}`' if location else ''} |"
+                f"{_text(f.message)} | {f'`{_cell(location)}`' if location else ''} |"
             )
     else:
         lines.append("**No breaking changes found.**")
@@ -68,8 +70,8 @@ def build_markdown(
         for c in unreported:
             rule = _rule_link(c.rule) if c.rule else ""
             lines.append(
-                f"| {rule} | `{_cell(c.qualified_target)}` | {_cell(c.message)} | "
-                f"{_cell(c.reason)} |"
+                f"| {rule} | `{_cell(c.qualified_target)}` | {_text(c.message)} | "
+                f"{_text(c.reason)} |"
             )
         lines += ["", "</details>"]
     return "\n".join(lines) + "\n"
@@ -81,5 +83,10 @@ def _rule_link(rule_id: str) -> str:
 
 
 def _cell(text: str) -> str:
-    """Make ``text`` safe inside a Markdown table cell."""
+    """Make ``text`` safe inside a Markdown table cell, e.g. within a code span."""
     return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _text(text: str) -> str:
+    """Show free ``text`` literally in a table cell: no Markdown, HTML or links."""
+    return _cell(re.sub(r"([\\`*_\[\]~#])", r"\\\1", html.escape(text, quote=False)))

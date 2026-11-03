@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from rich.console import Console
+from rich.markup import escape
 
 from ..rules import LEVEL_LABEL, Finding
 from .changes import Change, by_location, suppressed_changes
@@ -69,8 +70,8 @@ def _print_unreported(console: Console, changes: list[Change]) -> None:
         for change in by_package[package]:
             rule = f"[bold]{change.rule}[/bold] " if change.rule else ""
             console.print(
-                f"    {rule}{change.qualified_target}: {change.message}  "
-                f"[dim]({change.reason})[/dim]"
+                f"    {rule}{escape(change.qualified_target)}: {escape(change.message)}  "
+                f"[dim]({escape(change.reason)})[/dim]"
             )
 
 
@@ -114,7 +115,7 @@ def _print_finding(console: Console, finding: Finding) -> None:
     label = LEVEL_LABEL.get(finding.level, finding.level)
     console.print(
         f"  [bold]{finding.rule}[/bold] [{style}]{finding.severity}[/{style}]  "
-        f"{finding.qualified_target}: {finding.message}  [dim]({label})[/dim]"
+        f"{escape(finding.qualified_target)}: {escape(finding.message)}  [dim]({label})[/dim]"
     )
     location = _location(finding)
     if location:

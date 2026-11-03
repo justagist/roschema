@@ -112,6 +112,15 @@ def test_finalize_inline_suppression():
     assert out[0].suppressed_reason == "an inline ignore"
 
 
+def test_package_allowlist_reason_takes_precedence():
+    entry = ("demo/msg/T.a", ("RS001",))
+    cfg = Config(
+        workspace=ScopeConfig(allow=(AllowEntry(*entry, "workspace reason"),)),
+        packages={"demo": ScopeConfig(allow=(AllowEntry(*entry, "package reason"),))},
+    )
+    assert cfg.allow_reason(_finding("RS001")) == "package reason"
+
+
 def test_finalize_allowlist_suppression():
     cfg = Config(
         workspace=ScopeConfig(

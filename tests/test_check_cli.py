@@ -144,7 +144,30 @@ def test_check_verbose_json_lists_changes(tmp_path):
         (None, "B", "a new constant breaks nothing"),
         (None, "", "a new interface breaks nothing"),
         ("RS030", "y", "behavior-level rule; checking at source"),
+        ("RS001", "gone", "suppressed by the allowlist: removed in 2.0"),
     ]
+
+
+def test_check_verbose_shows_reasons_literally(tmp_path):
+    args = _unreported_sample(tmp_path)
+    (tmp_path / "new" / "roschema.toml").write_text(
+        '[check.rules]\nRS030 = "off"\n'
+        '[check.allow]\n"p/msg/S.gone" = { rules = ["RS001"], reason = """removed\n'
+        '::warning::injected""" }\n'
+    )
+    text = runner.invoke(app, [*args, "--verbose"]).stdout
+    assert "(rule off; enable it in [check.rules])" in text
+
+    github = runner.invoke(app, [*args, "--verbose", "--format", "github"]).stdout
+    assert "suppressed by the allowlist: removed ::warning::injected" in github
+    assert not any(line.startswith("::warning::") for line in github.splitlines())
+
+
+def test_check_summary_write_error_is_a_tool_error(tmp_path):
+    args = [*_unreported_sample(tmp_path), "--summary", str(tmp_path / "missing" / "s.md")]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2
+    assert "cannot write the summary to" in result.output
 
 
 def test_check_summary_appends_markdown(tmp_path):

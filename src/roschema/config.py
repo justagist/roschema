@@ -97,11 +97,14 @@ class Config:
         return self.workspace.deep or False
 
     def allow_reason(self, finding: Finding) -> str | None:
-        """The reason of the allowlist entry covering this finding, if any."""
-        entries = list(self.workspace.allow)
+        """The reason of the allowlist entry covering this finding, if any.
+
+        A package entry takes precedence over a workspace one, as package
+        configuration does elsewhere.
+        """
         pkg_cfg = self.packages.get(finding.package)
-        if pkg_cfg is not None:
-            entries += list(pkg_cfg.allow)
+        entries = list(pkg_cfg.allow) if pkg_cfg is not None else []
+        entries += list(self.workspace.allow)
         for entry in entries:
             if entry.target != finding.qualified_target:
                 continue

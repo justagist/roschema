@@ -375,8 +375,9 @@ has no `new`). `coverage` counts interfaces present on both sides (`compared`)
 and on one side only. `help_uri` links to the rule's section of the
 [rule reference](docs/rules.md) for the installed release. With `--verbose`, a
 `changes` array lists the unreported changes (each with `rule`, `package`,
-`interface`, `section`, `target`, `message` and `reason`); suppressed findings
-stay in `findings`. `lint` output has no `advisories`, `coverage` or `changes`.
+`interface`, `section`, `target`, `message` and `reason`), including suppressed
+findings with the reason they are suppressed. `lint` output has no
+`advisories`, `coverage` or `changes`.
 
 ## Exit codes
 

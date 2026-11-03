@@ -463,8 +463,12 @@ def _write_summary(result: _Result, path: Path) -> None:
     report = build_markdown(
         result.findings, result.new_source, result.old_source, result.coverage, result.changes
     )
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(report)
+    try:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(report)
+    except OSError as exc:
+        err_console.print(f"[red]error:[/red] cannot write the summary to {str(path)!r}: {exc}")
+        raise typer.Exit(code=2) from exc
 
 
 def _emit(result: _Result, fmt: str, verbose: bool) -> None:
@@ -477,10 +481,10 @@ def _emit(result: _Result, fmt: str, verbose: bool) -> None:
         if verbose:
             for change in by_location([*changes, *suppressed_changes(findings)]):
                 rule = f"{change.rule} " if change.rule else ""
-                typer.echo(
-                    f"not reported: {rule}{change.qualified_target}: {change.message} "
-                    f"({change.reason})"
-                )
+                line = f"{rule}{change.qualified_target}: {change.message} ({change.reason})"
+                # A line break (e.g. in an allowlist reason) could start a
+                # workflow command; commands are only read at line starts.
+                typer.echo("not reported: " + " ".join(line.splitlines()))
         for line in build_github(findings, result.display_prefix, result.interface_files):
             typer.echo(line)
     else:
