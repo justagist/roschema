@@ -50,6 +50,12 @@ def test_fixed_array_size_is_type_change():
     assert _types(_events("int32[3] x\n", "int32[4] x\n")) == [ChangeType.FIELD_TYPE_CHANGED]
 
 
+def test_same_package_qualification_is_not_a_change():
+    assert _events("Point p\n", "p/Point p\n") == []
+    assert _types(_events("Point a\n", "p/Point b\n")) == [ChangeType.FIELD_RENAMED]
+    assert _types(_events("Point p\n", "other/Point p\n")) == [ChangeType.FIELD_TYPE_CHANGED]
+
+
 def test_array_kind_changed():
     assert _types(_events("int32[] x\n", "int32[4] x\n")) == [
         ChangeType.FIELD_ARRAY_KIND_CHANGED

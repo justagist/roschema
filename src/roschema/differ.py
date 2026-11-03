@@ -9,10 +9,10 @@ fields is itself a (wire-breaking) event.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
-from .ir import ArrayKind, Constant, Field, InterfaceFile, SectionKind
+from .ir import ArrayKind, Constant, Field, InterfaceFile, SectionKind, TypeRef
 
 
 class ChangeType(Enum):
@@ -101,7 +101,7 @@ def _diff_interface(
 ) -> None:
     local: list[ChangeEvent] = []
     for sec_old, sec_new in zip(old.sections, new.sections, strict=False):
-        _diff_fields(key, sec_old.kind, sec_old.members, sec_new.members, local)
+        _diff_fields(key, old.package, sec_old.kind, sec_old.members, sec_new.members, local)
         _diff_constants(key, sec_old.kind, sec_old.members, sec_new.members, local)
     _check_message_version(key, old, new, local)
     events.extend(local)
@@ -147,6 +147,7 @@ def _message_version(iface: InterfaceFile) -> Constant | None:
 
 def _diff_fields(
     key: str,
+    package: str,
     section: SectionKind,
     old_members: tuple[object, ...],
     new_members: tuple[object, ...],
@@ -164,7 +165,8 @@ def _diff_fields(
         old_idx, old_field = old_by[old_name]
         for new_name in list(added):
             new_idx, new_field = new_by[new_name]
-            if new_idx == old_idx and old_field.type == new_field.type:
+            same_type = _qualified(old_field.type, package) == _qualified(new_field.type, package)
+            if new_idx == old_idx and same_type:
                 events.append(
                     ChangeEvent(
                         ChangeType.FIELD_RENAMED,
@@ -192,7 +194,7 @@ def _diff_fields(
     for name in (n for n in old_by if n in new_by):
         old_field = old_by[name][1]
         new_field = new_by[name][1]
-        change = _classify_type_change(old_field, new_field)
+        change = _classify_type_change(old_field, new_field, package)
         if change is not None:
             events.append(
                 ChangeEvent(change, key, section, name, old=old_field, new=new_field)
@@ -223,9 +225,16 @@ def _diff_fields(
         )
 
 
-def _classify_type_change(old: Field, new: Field) -> ChangeType | None:
+def _qualified(type_ref: TypeRef, package: str) -> TypeRef:
+    """Qualify a same-package complex type, so ``Point`` equals ``pkg/Point`` in ``pkg``."""
+    if type_ref.is_builtin or type_ref.package is not None:
+        return type_ref
+    return replace(type_ref, package=package)
+
+
+def _classify_type_change(old: Field, new: Field, package: str) -> ChangeType | None:
     """Return the single most significant type-related change, or ``None``."""
-    o, n = old.type, new.type
+    o, n = _qualified(old.type, package), _qualified(new.type, package)
     if o.base != n.base or o.package != n.package or o.is_builtin != n.is_builtin:
         return ChangeType.FIELD_TYPE_CHANGED
     if o.array_kind != n.array_kind:
