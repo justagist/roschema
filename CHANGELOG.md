@@ -40,6 +40,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Files are read and written as UTF-8 regardless of locale.
 - GitHub annotation text is escaped.
 - `wchar` in MCAP IDL schemas is rejected instead of narrowed to `char`.
+- The README's GitHub Action example references an existing ref (`@main`).
 
 ## [0.1.3] - 2026-11-03
 
