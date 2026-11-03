@@ -371,7 +371,7 @@ of a step.
       "old": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
       "new": { "file": "my_msgs/msg/Pose.msg", "line": 1 },
       "suppressed": false,
-      "help_uri": "https://github.com/justagist/roschema/blob/v0.4.0/docs/rules.md#rs003----field-type-changed"
+      "help_uri": "https://github.com/justagist/roschema/blob/v0.5.0/docs/rules.md#rs003----field-type-changed"
     }
   ],
   "summary": {
@@ -430,7 +430,7 @@ jobs:
       - uses: justagist/roschema/action@main
         with:
           against: origin/${{ github.base_ref }}
-          # version: "roschema==0.4.0"   # pin a release for reproducible results
+          # version: "roschema==0.5.0"   # pin a release for reproducible results
           # level: source
           # deep: "true"
           # warnings-as-errors: "true"
