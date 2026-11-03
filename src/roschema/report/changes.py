@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..differ import ChangeEvent, ChangeType
+from ..rules import Finding
 
 NEW_INTERFACE = "a new interface breaks nothing"
 NEW_CONSTANT = "a new constant breaks nothing"
@@ -37,6 +38,42 @@ class Change:
     def package(self) -> str:
         """Owning package name (first segment of the interface key)."""
         return self.interface.split("/", 1)[0]
+
+    @property
+    def qualified_target(self) -> str:
+        """Fully-qualified target, written as for a :class:`Finding`."""
+        parts = [self.interface]
+        if self.section and self.section != "message":
+            parts.append(self.section)
+        if self.target:
+            parts.append(self.target)
+        return ".".join(parts)
+
+    @classmethod
+    def from_finding(cls, finding: Finding, reason: str) -> Change:
+        """A finding that is not reported, for ``reason``."""
+        return cls(
+            finding.interface,
+            finding.section,
+            finding.target,
+            finding.message,
+            reason,
+            finding.rule,
+        )
+
+
+def by_location(changes: list[Change]) -> list[Change]:
+    """``changes`` sorted by interface, section and member, for listing."""
+    return sorted(changes, key=lambda c: (c.interface, c.section or "", c.target))
+
+
+def suppressed_changes(findings: list[Finding]) -> list[Change]:
+    """The suppressed findings among ``findings``, with why each is suppressed."""
+    return [
+        Change.from_finding(f, f"suppressed by {f.suppressed_reason}")
+        for f in findings
+        if f.suppressed
+    ]
 
 
 def additions(events: list[ChangeEvent]) -> list[Change]:

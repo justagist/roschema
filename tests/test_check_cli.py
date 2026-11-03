@@ -105,6 +105,48 @@ def test_check_advises_minor_for_additions(tmp_path):
     assert doc["summary"]["advisories"] == {"my_msgs": "MINOR"}
 
 
+def _unreported_sample(tmp_path):
+    write_package(tmp_path / "old", "p", msgs={"S": "uint8 A=1\nint32 x\nint32 y 5\nint32 gone\n"})
+    write_package(
+        tmp_path / "new",
+        "p",
+        msgs={"S": "uint8 A=1\nuint8 B=3\nint32 x\nint32 y 6\n", "T": "int32 t\n"},
+    )
+    (tmp_path / "new" / "roschema.toml").write_text(
+        '[check.allow]\n"p/msg/S.gone" = { rules = ["RS001"], reason = "removed in 2.0" }\n'
+    )
+    return ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
+
+
+def test_check_verbose_lists_unreported_changes(tmp_path):
+    args = _unreported_sample(tmp_path)
+    quiet = runner.invoke(app, args)
+    assert quiet.exit_code == 0
+    assert "not reported" not in quiet.stdout
+
+    result = runner.invoke(app, [*args, "--verbose"])
+    assert result.exit_code == 0
+    listed = result.stdout.split("not reported\n", 1)[1].splitlines()[:5]
+    assert [line.strip() for line in listed] == [
+        "p",
+        "p/msg/S.B: constant added: uint8 B=3  (a new constant breaks nothing)",
+        "RS001 p/msg/S.gone: field 'gone' removed  (suppressed by the allowlist: removed in 2.0)",
+        "RS030 p/msg/S.y: default changed 5 -> 6  (behavior-level rule; checking at source)",
+        "p/msg/T: interface added  (a new interface breaks nothing)",
+    ]
+
+
+def test_check_verbose_json_lists_changes(tmp_path):
+    args = [*_unreported_sample(tmp_path), "--format", "json"]
+    assert "changes" not in json.loads(runner.invoke(app, args).stdout)
+    doc = json.loads(runner.invoke(app, [*args, "--verbose"]).stdout)
+    assert [(c["rule"], c["target"], c["reason"]) for c in doc["changes"]] == [
+        (None, "B", "a new constant breaks nothing"),
+        (None, "", "a new interface breaks nothing"),
+        ("RS030", "y", "behavior-level rule; checking at source"),
+    ]
+
+
 def test_check_empty_baseline_is_an_error(tmp_path):
     repo = make_git_repo(tmp_path / "repo")
     (repo / "README").write_text("no interfaces yet\n")

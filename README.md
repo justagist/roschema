@@ -123,7 +123,7 @@ roschema explain RS004
 ```
 roschema check [TARGET] --against BASELINE [--level LEVEL] [--format text|json|github]
                [--deep | --no-deep] [--exit-zero] [--warnings-as-errors] [--allow-empty]
-               [--config PATH] [--exclude GLOB]
+               [--verbose] [--config PATH] [--exclude GLOB]
 ```
 
 `TARGET` selects what to check; omit it to check every interface package below
@@ -219,7 +219,7 @@ same. Comparison ignores it.
 ```
 roschema bag-check BAG.mcap [TARGETS...] [--level LEVEL] [--config PATH]
                    [--format text|json|github] [--exit-zero] [--warnings-as-errors]
-                   [--exclude GLOB]
+                   [--verbose] [--exclude GLOB]
 ```
 
 Needs the `bag` extra (`uv tool install 'roschema[bag]'`).
@@ -317,6 +317,12 @@ package and ends with a summary and a semver advice per package:
   lowered to `warn`;
 - **PATCH** otherwise.
 
+**`--verbose`** also lists, under "not reported", every change that produced no
+reported finding, and why: a new interface or constant (no rule reports either,
+at any level; an added field is RS002), a rule whose level is outside the one
+being checked, a rule that is off, or a suppression, with the allowlist reason.
+Comment-only edits are not changes, so they never appear.
+
 **`--format github`** prints what was compared, then emits `::error`/`::warning`
 workflow commands, which GitHub shows as annotations on the PR diff.
 
@@ -360,8 +366,10 @@ workflow commands, which GitHub shows as annotations on the PR diff.
 `old`/`new` are `null` when there is no corresponding side (a removed interface
 has no `new`). `coverage` counts interfaces present on both sides (`compared`)
 and on one side only. `help_uri` links to the rule's section of the
-[rule reference](docs/rules.md) for the installed release. `lint` output has no
-`advisories` or `coverage`.
+[rule reference](docs/rules.md) for the installed release. With `--verbose`, a
+`changes` array lists the unreported changes (each with `rule`, `package`,
+`interface`, `section`, `target`, `message` and `reason`); suppressed findings
+stay in `findings`. `lint` output has no `advisories`, `coverage` or `changes`.
 
 ## Exit codes
 
@@ -420,8 +428,10 @@ because it is part of the checkout.
 ## Troubleshooting
 
 **"no breaking changes found", but you expected some.** The line under the
-header says how many interfaces were compared. Run `roschema ls` with the same
-target to see which packages and interfaces are discovered, then check that:
+header says how many interfaces were compared, and `--verbose` lists the changes
+that were seen but not reported, with the reason. Run `roschema ls` with the
+same target to see which packages and interfaces are discovered, then check
+that:
 
 - the packages are not below a `COLCON_IGNORE` or `AMENT_IGNORE` marker;
 - a package-name target did not fall back to the installed copy (the warning

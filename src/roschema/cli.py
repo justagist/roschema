@@ -41,7 +41,7 @@ from .loader import load_interfaces
 from .mcap_fs import McapTypeFS
 from .parser import ParseError
 from .report import Coverage, build_github, build_json, coverage, render_lint, render_text
-from .report.changes import Change, additions
+from .report.changes import Change, additions, by_location, suppressed_changes
 from .rules import Finding, all_lint_rules, all_rules, evaluate, lint_interfaces
 from .rules.gendocs import docs_url, find_rule, render_rule
 from .vfs import GitTreeFS, RealFS, VfsError, git_toplevel
@@ -66,7 +66,8 @@ class _Result:
         new_source: Description of the target side.
         old_source: Description of the baseline side.
         coverage: Interface counts across both sides.
-        changes: Changes that are not findings, such as added interfaces.
+        changes: Changes that are not findings: additions, and findings dropped
+            for their level or because their rule is off.
         interface_files: Each current interface's source file, by interface key.
         display_prefix: Repo-root-relative prefix for annotation paths.
     """
@@ -145,6 +146,14 @@ def check(
         bool,
         typer.Option("--warnings-as-errors", help="Exit 1 on warnings as well as errors."),
     ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Also list changes that are not reported (added, below the level, rule off "
+            "or suppressed) and why.",
+        ),
+    ] = False,
     allow_empty: Annotated[
         bool,
         typer.Option(
@@ -184,7 +193,7 @@ def check(
             f"the baseline ({result.old_source})",
             "pass --allow-empty if that is expected",
         )
-    _emit(result, fmt)
+    _emit(result, fmt, verbose)
     _exit_for(result.findings, exit_zero, warnings_as_errors)
 
 
@@ -218,6 +227,14 @@ def bag_check(
     warnings_as_errors: Annotated[
         bool,
         typer.Option("--warnings-as-errors", help="Exit 1 on warnings as well as errors."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Also list changes that are not reported (added, below the level, rule off "
+            "or suppressed) and why.",
+        ),
     ] = False,
     exclude: Annotated[
         list[str] | None,
@@ -255,16 +272,17 @@ def bag_check(
         raise typer.Exit(code=2) from exc
 
     events = diff_interfaces(old_ifaces, new_ifaces)
+    dropped: list[tuple[Finding, str]] = []
     result = _Result(
-        findings=finalize_findings(evaluate(events), config, level, BAG_DEFAULT_LEVEL),
+        findings=finalize_findings(evaluate(events), config, level, BAG_DEFAULT_LEVEL, dropped),
         new_source=new_source,
         old_source=old_res.source,
         coverage=coverage(old_ifaces, new_ifaces),
-        changes=additions(events),
+        changes=additions(events) + [Change.from_finding(f, why) for f, why in dropped],
         interface_files={key: iface.source_file for key, iface in new_ifaces.items()},
     )
     _require_baseline(result.coverage, "the bag", "check the --exclude patterns")
-    _emit(result, fmt)
+    _emit(result, fmt, verbose)
     _exit_for(result.findings, exit_zero, warnings_as_errors)
 
 
@@ -355,19 +373,20 @@ def _compute(
         old_packages = tuple(p for p in old_packages if p.name in scope)
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
     events = diff_interfaces(old_ifaces, new_ifaces)
-    findings = finalize_findings(evaluate(events), config, level)
+    dropped: list[tuple[Finding, str]] = []
+    findings = finalize_findings(evaluate(events), config, level, dropped=dropped)
     deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
     if deep_packages:
         transitive = transitive_findings(new_ifaces, findings)
         findings += finalize_findings(
-            [f for f in transitive if f.package in deep_packages], config, level
+            [f for f in transitive if f.package in deep_packages], config, level, dropped=dropped
         )
     return _Result(
         findings=findings,
         new_source=new_res.source,
         old_source=old_res.source,
         coverage=coverage(old_ifaces, new_ifaces),
-        changes=additions(events),
+        changes=additions(events) + [Change.from_finding(f, why) for f, why in dropped],
         interface_files={key: iface.source_file for key, iface in new_ifaces.items()},
         display_prefix=prefix,
     )
@@ -413,16 +432,24 @@ def _exit_for(findings: list[Finding], exit_zero: bool, warnings_as_errors: bool
     raise typer.Exit(code=1 if has_failure else 0)
 
 
-def _emit(result: _Result, fmt: str) -> None:
+def _emit(result: _Result, fmt: str, verbose: bool) -> None:
     findings, cov, changes = result.findings, result.coverage, result.changes
     if fmt == "json":
-        typer.echo(json.dumps(build_json(findings, coverage=cov, changes=changes), indent=2))
+        doc = build_json(findings, coverage=cov, changes=changes, verbose=verbose)
+        typer.echo(json.dumps(doc, indent=2))
     elif fmt == "github":
         typer.echo(cov.describe())
+        if verbose:
+            for change in by_location([*changes, *suppressed_changes(findings)]):
+                rule = f"{change.rule} " if change.rule else ""
+                typer.echo(
+                    f"not reported: {rule}{change.qualified_target}: {change.message} "
+                    f"({change.reason})"
+                )
         for line in build_github(findings, result.display_prefix, result.interface_files):
             typer.echo(line)
     else:
-        render_text(findings, console, result.new_source, result.old_source, cov, changes)
+        render_text(findings, console, result.new_source, result.old_source, cov, changes, verbose)
 
 
 @app.command()

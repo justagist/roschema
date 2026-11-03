@@ -109,6 +109,7 @@ def test_finalize_level_filter():
 def test_finalize_inline_suppression():
     out = finalize_findings([_finding("RS005", inline=("RS005",))], Config(), None)
     assert out[0].suppressed is True
+    assert out[0].suppressed_reason == "an inline ignore"
 
 
 def test_finalize_allowlist_suppression():
@@ -119,6 +120,18 @@ def test_finalize_allowlist_suppression():
     )
     out = finalize_findings([_finding("RS001")], cfg, None)
     assert out[0].suppressed is True
+    assert out[0].suppressed_reason == "the allowlist: intentional, see #1"
+
+
+def test_finalize_records_dropped_findings():
+    cfg = Config(workspace=ScopeConfig(rules={"RS001": "off"}))
+    behaviour = _finding("RS030", severity="warn", levels=("behavior",))
+    dropped: list = []
+    assert finalize_findings([_finding("RS001"), behaviour], cfg, "source", dropped=dropped) == []
+    assert [(f.rule, reason) for f, reason in dropped] == [
+        ("RS001", "rule off; enable it in [check.rules]"),
+        ("RS030", "behavior-level rule; checking at source"),
+    ]
 
 
 def test_finalize_allowlist_rule_scoped():
@@ -228,7 +241,7 @@ def test_root_package_config_without_discovered_interfaces(tmp_path, package_for
     assert cfg.effective_severity("RS001", "demo", "error") == "off"
     assert cfg.effective_severity("RS003", "demo", "error") == "warn"
     assert cfg.effective_severity("RS001", "other", "error") == "error"
-    assert cfg.is_allowed(_finding("RS001"))
+    assert cfg.allow_reason(_finding("RS001")) == "intentional"
 
 
 @pytest.mark.parametrize("package_format", ["roschema.toml", "pyproject.toml"])

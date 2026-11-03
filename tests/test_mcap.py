@@ -445,6 +445,20 @@ def test_bag_check_github_attaches_unlocated_findings_to_interface_file(tmp_path
     assert all(line.startswith("::error file=demo_msgs/msg/Pose.msg,") for line in removed)
 
 
+def test_bag_check_verbose_names_changes_below_wire_level(tmp_path):
+    bag = tmp_path / "rec.mcap"
+    _write_bag(bag, {"demo_msgs/msg/Mode": "uint8 AUTO=1\nuint8 mode\n"})
+    ws = tmp_path / "ws"
+    write_package(ws, "demo_msgs", msgs={"Mode": "uint8 mode\n"})
+
+    result = runner.invoke(app, ["bag-check", str(bag), str(ws), "--verbose"])
+    assert result.exit_code == 0
+    assert (
+        "RS020 demo_msgs/msg/Mode.AUTO: constant 'AUTO' removed  "
+        "(source-level rule; checking at wire)" in result.stdout
+    )
+
+
 def test_mcap_without_schemas_is_a_tool_error(tmp_path):
     bag = tmp_path / "empty.mcap"
     _write_bag(bag, {})

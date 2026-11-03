@@ -9,6 +9,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 - JSON findings link to their rule's documentation (`help_uri`).
 - `roschema explain RULE` prints a rule's reference section.
+- `check --verbose` and `bag-check --verbose` list the changes that are not
+  reported (added, outside the level, rule off or suppressed) with the reason;
+  JSON adds a `changes` array.
 
 ### Changed
 

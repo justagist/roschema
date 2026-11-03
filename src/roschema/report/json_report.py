@@ -18,12 +18,14 @@ def build_json(
     advisories: bool = True,
     coverage: Coverage | None = None,
     changes: Sequence[Change] = (),
+    verbose: bool = False,
 ) -> dict[str, object]:
     """Build the JSON-serialisable report document.
 
     ``advisories`` adds per-package semver advice and ``coverage`` the interface
     counts; both only mean something for a comparison against a baseline (not
-    for lint). Additions among ``changes`` count towards the advice.
+    for lint). Additions among ``changes`` count towards the advice, and
+    ``verbose`` lists ``changes`` too.
     """
     summary = summarize(findings, changes)
     counts: dict[str, object] = {
@@ -39,6 +41,19 @@ def build_json(
         "findings": [_finding_dict(f) for f in findings],
         "summary": counts,
     }
+    if verbose:
+        doc["changes"] = [
+            {
+                "rule": c.rule,
+                "package": c.package,
+                "interface": c.interface,
+                "section": c.section,
+                "target": c.target,
+                "message": c.message,
+                "reason": c.reason,
+            }
+            for c in changes
+        ]
     if coverage is not None:
         doc["coverage"] = {
             "packages": coverage.packages,

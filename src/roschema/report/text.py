@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from rich.console import Console
 
 from ..rules import LEVEL_LABEL, Finding
-from .changes import Change
+from .changes import Change, by_location, suppressed_changes
 from .summary import Coverage, Summary, summarize
 
 _SEVERITY_STYLE = {"error": "red", "warn": "yellow"}
@@ -21,11 +21,13 @@ def render_text(
     old_source: str,
     coverage: Coverage,
     changes: Sequence[Change] = (),
+    verbose: bool = False,
 ) -> None:
     """Render findings to ``console`` with coverage, a summary and semver advisories.
 
     Suppressed findings are not listed individually but are counted. Additions
-    among ``changes`` count towards the semver advice.
+    among ``changes`` count towards the semver advice; ``verbose`` also lists
+    ``changes`` and suppressed findings, each with why it is not reported.
     """
     console.print(f"[bold]checking[/bold] {new_source}  [dim]against[/dim]  {old_source}")
     console.print(f"[dim]{coverage.describe()}[/dim]")
@@ -34,10 +36,6 @@ def render_text(
 
     if not reported:
         console.print("[green]no breaking changes found[/green]")
-        _print_suppressed(console, findings)
-        _print_advisories(console, summary)
-        return
-
     by_package: dict[str, list[Finding]] = {}
     for finding in reported:
         by_package.setdefault(finding.package, []).append(finding)
@@ -45,13 +43,35 @@ def render_text(
         console.print(f"\n[bold cyan]{package}[/bold cyan]")
         for finding in by_package[package]:
             _print_finding(console, finding)
+    unreported = [*changes, *suppressed_changes(findings)] if verbose else []
+    _print_unreported(console, unreported)
+    if unreported and not reported:
+        console.print()
 
-    console.print(
-        f"\n[bold]{summary.total} finding(s):[/bold] "
-        f"[red]{summary.errors} error(s)[/red], [yellow]{summary.warnings} warning(s)[/yellow]"
-    )
+    if reported:
+        console.print(
+            f"\n[bold]{summary.total} finding(s):[/bold] "
+            f"[red]{summary.errors} error(s)[/red], [yellow]{summary.warnings} warning(s)[/yellow]"
+        )
     _print_suppressed(console, findings)
     _print_advisories(console, summary)
+
+
+def _print_unreported(console: Console, changes: list[Change]) -> None:
+    if not changes:
+        return
+    console.print("\n[bold]not reported[/bold]")
+    by_package: dict[str, list[Change]] = {}
+    for change in by_location(changes):
+        by_package.setdefault(change.package, []).append(change)
+    for package in sorted(by_package):
+        console.print(f"  [bold cyan]{package}[/bold cyan]")
+        for change in by_package[package]:
+            rule = f"[bold]{change.rule}[/bold] " if change.rule else ""
+            console.print(
+                f"    {rule}{change.qualified_target}: {change.message}  "
+                f"[dim]({change.reason})[/dim]"
+            )
 
 
 def _print_advisories(console: Console, summary: Summary) -> None:
