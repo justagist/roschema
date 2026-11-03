@@ -17,8 +17,10 @@ Supported schema encodings:
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, BinaryIO
 
+from .differ import diff_interfaces
+from .parser import parse_text
 from .vfs import MappingVFS, VfsError
 
 _SEPARATOR = re.compile(r"^={3,}$")
@@ -33,8 +35,8 @@ class McapTypeFS(MappingVFS):
         super().__init__(_build_tree(_read_schemas(bag_path)))
 
 
-def _read_schemas(bag_path: str) -> dict[str, tuple[str, str]]:
-    """Return ``{schema_name: (encoding, definition_text)}`` from an MCAP file."""
+def _read_schemas(bag_path: str) -> list[tuple[str, str, str]]:
+    """Return every schema as ``(name, encoding, definition_text)``."""
     try:
         from mcap.reader import make_reader
     except ModuleNotFoundError as exc:
@@ -42,46 +44,70 @@ def _read_schemas(bag_path: str) -> dict[str, tuple[str, str]]:
             "MCAP support requires the 'bag' extra: pip install 'roschema[bag]'"
         ) from exc
 
-    schemas: dict[str, tuple[str, str]] = {}
+    schemas: list[tuple[str, str, str]] = []
     try:
         with open(bag_path, "rb") as handle:
             reader = make_reader(handle)
-            for schema in _iter_schemas(reader):
+            for schema in _iter_schemas(reader, handle):
                 text = schema.data.decode("utf-8", errors="replace")
-                schemas[schema.name] = (schema.encoding, text)
+                schemas.append((schema.name, schema.encoding, text))
     except OSError as exc:
         raise VfsError(f"could not read MCAP file {bag_path}: {exc}") from exc
     return schemas
 
 
-def _iter_schemas(reader: Any) -> list[Any]:
+def _iter_schemas(reader: Any, handle: BinaryIO) -> list[Any]:
     summary = reader.get_summary()
     if summary is not None and summary.schemas:
         return list(summary.schemas.values())
+    from mcap.reader import NonSeekingReader
+
+    handle.seek(0)
     seen: dict[int, Any] = {}
-    for schema, _channel, _message in reader.iter_messages():
+    for schema, _channel, _message in NonSeekingReader(handle).iter_messages():
         if schema is not None:
             seen[schema.id] = schema
     return list(seen.values())
 
 
-def _build_tree(schemas: dict[str, tuple[str, str]]) -> dict[str, str]:
-    files: dict[str, str] = {}
-    packages: set[str] = set()
-    for name, (encoding, text) in schemas.items():
+def _build_tree(schemas: list[tuple[str, str, str]]) -> dict[str, str]:
+    definitions: dict[str, str] = {}
+    for name, encoding, text in schemas:
         if encoding == "ros2msg":
             blocks = _split_ros2msg(name, text)
         elif encoding == "ros2idl":
             blocks = _convert_ros2idl(text)
         else:
-            continue
+            raise VfsError(f"unsupported MCAP schema encoding {encoding!r} for {name}")
+        if not blocks:
+            raise VfsError(f"unsupported {encoding} schema {name}: no convertible definitions")
         for type_name, body in blocks.items():
             pkg, short = _normalise(type_name)
-            files[f"{pkg}/msg/{short}.msg"] = body if body.endswith("\n") else body + "\n"
-            packages.add(pkg)
+            _store_definition(definitions, f"{pkg}/msg/{short}", body)
+    if not definitions:
+        raise VfsError("MCAP contains no usable ROS schemas")
+    files: dict[str, str] = {}
+    packages: set[str] = set()
+    for name, body in definitions.items():
+        pkg, short = _normalise(name)
+        files[f"{pkg}/msg/{short}.msg"] = body if body.endswith("\n") else body + "\n"
+        packages.add(pkg)
     for pkg in packages:
         files[f"{pkg}/package.xml"] = _PACKAGE_XML.format(name=pkg)
     return files
+
+
+
+def _store_definition(definitions: dict[str, str], name: str, body: str) -> None:
+    """Coalesce equivalent schemas and reject conflicting type definitions."""
+    if name in definitions:
+        pkg, short = _normalise(name)
+        old = parse_text(definitions[name], name, pkg, short, "msg")
+        new = parse_text(body, name, pkg, short, "msg")
+        if diff_interfaces({old.key: old}, {new.key: new}):
+            raise VfsError(f"conflicting MCAP definitions for {name}")
+    else:
+        definitions[name] = body
 
 
 def _split_ros2msg(main_name: str, text: str) -> dict[str, str]:
@@ -92,12 +118,12 @@ def _split_ros2msg(main_name: str, text: str) -> dict[str, str]:
     iterator = iter(text.splitlines())
     for line in iterator:
         if _SEPARATOR.match(line.strip()):
-            blocks[current] = "\n".join(lines).strip("\n")
+            _store_definition(blocks, current, "\n".join(lines).strip("\n"))
             lines = []
             current = _next_msg_header(iterator, main_name)
             continue
         lines.append(line)
-    blocks[current] = "\n".join(lines).strip("\n")
+    _store_definition(blocks, current, "\n".join(lines).strip("\n"))
     return blocks
 
 
@@ -156,14 +182,17 @@ def _convert_ros2idl(text: str) -> dict[str, str]:
     """Convert the msg-equivalent subset of an IDL blob into ``{type: body}``."""
     text = re.sub(r"//[^\n]*", "", text)
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    if re.search(r"\b(?:enum|union|typedef)\s+\w+|(?:^|[;{}])\s*@\w+", text, re.MULTILINE):
+        raise VfsError("unsupported ros2idl construct; conversion would be incomplete")
     blocks: dict[str, str] = {}
     for struct_match in _STRUCT_RE.finditer(text):
         name = struct_match.group(1)
         pkg = _enclosing_package(text, struct_match.start())
         body = _struct_body(text, struct_match.end())
         lines = _convert_struct_body(body)
-        if lines is not None:
-            blocks[f"{pkg}/msg/{name}"] = "\n".join(lines)
+        if lines is None:
+            raise VfsError(f"unsupported ros2idl struct {pkg}/msg/{name}")
+        _store_definition(blocks, f"{pkg}/msg/{name}", "\n".join(lines))
     return blocks
 
 

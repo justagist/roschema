@@ -171,7 +171,10 @@ environment, so a package you are editing can be checked from source instead of
 its installed copy. A bag type found in neither the environment nor any target
 is reported as removed (RS040). `ros2msg` schemas (including concatenated
 dependent definitions) are fully supported; `ros2idl` is a best-effort
-conversion of the msg-equivalent subset.
+conversion of the msg-equivalent subset. Unsupported encodings or IDL constructs,
+conflicting definitions of the same type (including embedded dependencies), and
+bags without usable ROS schemas produce a tool error (exit `2`). Equivalent
+definitions that differ only in formatting or comments are accepted.
 
 ## Compatibility levels
 

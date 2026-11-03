@@ -70,15 +70,21 @@ def test_convert_ros2idl_subset():
 pytest.importorskip("mcap")
 
 
-def _write_bag(path, schemas: dict[str, str]) -> None:
+def _write_bag(
+    path, schemas: dict[str, str] | list[tuple[str, str, str]], *, summary: bool = True
+) -> None:
     from mcap.writer import Writer
 
     with open(path, "wb") as handle:
-        writer = Writer(handle)
+        writer = Writer(handle, repeat_schemas=summary)
         writer.start()
-        for name, text in schemas.items():
+        entries = (
+            [(name, "ros2msg", text) for name, text in schemas.items()]
+            if isinstance(schemas, dict) else schemas
+        )
+        for name, encoding, text in entries:
             schema_id = writer.register_schema(
-                name=name, encoding="ros2msg", data=text.encode()
+                name=name, encoding=encoding, data=text.encode()
             )
             channel_id = writer.register_channel(
                 topic="/" + name.replace("/", "_"),
@@ -204,3 +210,84 @@ def test_glob_rejects_synthetic_mcap_paths(tmp_path, monkeypatch):
     result = runner.invoke(app, ["check", "src/**", "--against", str(bag)])
     assert result.exit_code == 2
     assert "use a workspace target" in " ".join(result.output.split())
+
+
+@pytest.mark.parametrize("summary", [True, False])
+@pytest.mark.parametrize("reverse", [True, False])
+def test_mcap_rejects_conflicting_schemas_in_either_order(tmp_path, summary, reverse):
+    bag = tmp_path / "conflict.mcap"
+    schemas = [
+        ("demo/msg/T", "ros2msg", "int32 x\n"),
+        ("demo/msg/T", "ros2msg", "float64 x\n"),
+    ]
+    _write_bag(bag, schemas[::-1] if reverse else schemas, summary=summary)
+    write_package(tmp_path / "ws", "demo", msgs={"T": "int32 x\n"})
+    for args in [
+        ["bag-check", str(bag), str(tmp_path / "ws")],
+        ["check", str(tmp_path / "ws"), "--against", str(bag)],
+    ]:
+        result = runner.invoke(app, args)
+        assert result.exit_code == 2
+        assert "conflicting MCAP definitions" in result.output
+
+
+def test_mcap_accepts_equivalent_duplicate_definitions(tmp_path):
+    bag = tmp_path / "equivalent.mcap"
+    _write_bag(bag, [
+        ("demo/msg/T", "ros2msg", "int32 x\n"),
+        ("demo/T", "ros2msg", "int32   x # another comment\n"),
+    ])
+    write_package(tmp_path / "ws", "demo", msgs={"T": "int32 x\n"})
+    result = runner.invoke(app, ["bag-check", str(bag), str(tmp_path / "ws")])
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("same_schema", [True, False])
+def test_mcap_rejects_conflicting_embedded_definitions(tmp_path, same_schema):
+    bag = tmp_path / "dependencies.mcap"
+    first = "int32 x\n===\nMSG: demo/Dep\nint32 value\n"
+    second = "int32 x\n===\nMSG: demo/Dep\nfloat64 value\n"
+    schemas = (
+        [("demo/msg/T", "ros2msg", first + "===\nMSG: demo/Dep\nfloat64 value\n")]
+        if same_schema else [
+            ("demo/msg/T", "ros2msg", first), ("demo/msg/U", "ros2msg", second),
+        ]
+    )
+    _write_bag(bag, schemas)
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "conflicting MCAP definitions" in result.output
+
+
+@pytest.mark.parametrize("with_supported", [True, False])
+def test_mcap_rejects_unsupported_encodings(tmp_path, with_supported):
+    bag = tmp_path / "unsupported.mcap"
+    schemas = [("demo/msg/T", "jsonschema", "{}")]
+    if with_supported:
+        schemas.append(("demo/msg/U", "ros2msg", "int32 value\n"))
+    _write_bag(bag, schemas)
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "unsupported MCAP schema encoding" in result.output
+    assert "jsonschema" in result.output
+
+
+@pytest.mark.parametrize("idl", [
+    "module demo { module msg { enum Choice { A, B }; struct T { Choice x; }; }; };",
+    "module demo { module msg { struct T { int32 x; }; struct U { unknown x; }; }; };",
+    "module demo { module msg { @unsupported struct T { int32 x; }; }; };",
+])
+def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):
+    bag = tmp_path / "unsupported-idl.mcap"
+    _write_bag(bag, [("demo/msg/T", "ros2idl", idl)])
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "unsupported ros2idl" in result.output
+
+
+def test_mcap_without_schemas_is_a_tool_error(tmp_path):
+    bag = tmp_path / "empty.mcap"
+    _write_bag(bag, {})
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 2
+    assert "no usable ROS schemas" in result.output
