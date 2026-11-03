@@ -34,6 +34,7 @@ from .formatter import format_text
 from .freeze import build_lock
 from .ir import InterfaceFile
 from .loader import load_interfaces
+from .mcap_fs import McapTypeFS
 from .parser import ParseError
 from .report import build_github, build_json, render_lint, render_text
 from .rules import Finding, all_lint_rules, evaluate, lint_interfaces
@@ -169,6 +170,7 @@ def bag_check(
     excludes = exclude or []
     try:
         old_res = resolve_bag(bag)
+        _note_skipped_schemas(old_res)
         old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_res.packages, excludes))
         new_ifaces, new_source = _resolve_current(old_ifaces, targets or [], excludes)
         config = load_config(Path.cwd(), (), None)
@@ -233,6 +235,7 @@ def _compute(
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
     old_res = resolve_old(new_res.vfs.root)
+    _note_skipped_schemas(old_res)
     if isinstance(old_res.vfs, GitTreeFS):
         for path in old_res.vfs.missing_submodules:
             err_console.print(
@@ -269,6 +272,15 @@ def _compute(
             [f for f in transitive if f.package in deep_packages], config, level
         )
     return findings, new_res.source, old_res.source, prefix
+
+
+def _note_skipped_schemas(res: Resolution) -> None:
+    """Name the bag schemas recorded without a definition, which are not checked."""
+    if isinstance(res.vfs, McapTypeFS) and res.vfs.skipped:
+        err_console.print(
+            f"[dim]note: {len(res.vfs.skipped)} bag schema(s) have no recorded definition "
+            f"and are not checked: {', '.join(res.vfs.skipped)}[/dim]"
+        )
 
 
 def _display_prefix(target_dir: Path) -> str:

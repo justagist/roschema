@@ -7,11 +7,15 @@ extracts them and presents a virtual tree (``pkg/msg/Name.msg`` plus a synthetic
 Supported schema encodings:
 
 * ``ros2msg`` -- the concatenated ``.msg`` format (dependent definitions appended
-  after ``====`` separators with ``MSG: pkg/Type`` headers). Fully supported.
+  after ``====`` separators with ``MSG: pkg/Type`` headers). Fully supported,
+  including the ``SRV: pkg/srv/Type`` blocks recorded for service event topics.
 * ``ros2idl`` -- a best-effort conversion of the msg-equivalent subset (simple
   ``struct`` definitions with scalar/array/sequence/bounded-string fields and
   ``const`` declarations). Annotations, unions, typedefs, enums and other IDL
   constructs are not supported.
+
+Schemas recorded without a definition (rosbag2 writes an empty encoding and
+body when it cannot find one) are skipped and listed in :attr:`McapTypeFS.skipped`.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from .parser import parse_text
 from .vfs import MappingVFS, VfsError
 
 _SEPARATOR = re.compile(r"^={3,}$")
-_MSG_HEADER = re.compile(r"^MSG:\s*(\S+)")
+_HEADER = re.compile(r"^(MSG|SRV):\s*(\S+)")
 _PACKAGE_XML = '<?xml version="1.0"?>\n<package format="3"><name>{name}</name></package>\n'
 
 
@@ -32,7 +36,17 @@ class McapTypeFS(MappingVFS):
     """Read-only VFS over the interface definitions embedded in an MCAP file."""
 
     def __init__(self, bag_path: str) -> None:
-        super().__init__(_build_tree(_read_schemas(bag_path)))
+        schemas = _read_schemas(bag_path)
+        missing = [s for s in schemas if _is_missing(s)]
+        self.skipped = sorted(name for name, _, _ in missing)
+        """Schema names recorded without a definition, so not checked."""
+        super().__init__(_build_tree([s for s in schemas if s not in missing]))
+
+
+def _is_missing(schema: tuple[str, str, str]) -> bool:
+    """Whether rosbag2 recorded the schema without a definition."""
+    _, encoding, text = schema
+    return encoding == "" and not text.strip()
 
 
 def _read_schemas(bag_path: str) -> list[tuple[str, str, str]]:
@@ -81,59 +95,78 @@ def _build_tree(schemas: list[tuple[str, str, str]]) -> dict[str, str]:
             raise VfsError(f"unsupported MCAP schema encoding {encoding!r} for {name}")
         if not blocks:
             raise VfsError(f"unsupported {encoding} schema {name}: no convertible definitions")
-        for type_name, body in blocks.items():
-            pkg, short = _normalise(type_name)
-            _store_definition(definitions, f"{pkg}/msg/{short}", body)
+        for key, body in blocks.items():
+            _store_definition(definitions, key, body)
     if not definitions:
         raise VfsError("MCAP contains no usable ROS schemas")
     files: dict[str, str] = {}
     packages: set[str] = set()
-    for name, body in definitions.items():
-        pkg, short = _normalise(name)
-        files[f"{pkg}/msg/{short}.msg"] = body if body.endswith("\n") else body + "\n"
+    for key, body in definitions.items():
+        pkg, kind, short = key.split("/")
+        files[f"{key}.{kind}"] = body if body.endswith("\n") else body + "\n"
         packages.add(pkg)
     for pkg in packages:
         files[f"{pkg}/package.xml"] = _PACKAGE_XML.format(name=pkg)
     return files
 
 
-def _store_definition(definitions: dict[str, str], name: str, body: str) -> None:
-    """Coalesce equivalent schemas and reject conflicting type definitions."""
-    if name in definitions:
-        pkg, short = _normalise(name)
-        old = parse_text(definitions[name], name, pkg, short, "msg")
-        new = parse_text(body, name, pkg, short, "msg")
+def _store_definition(definitions: dict[str, str], key: str, body: str) -> None:
+    """Coalesce equivalent schemas and reject conflicting type definitions.
+
+    ``key`` is the interface key ``pkg/kind/Name`` the definition belongs to.
+    """
+    if key in definitions:
+        pkg, kind, short = key.split("/")
+        old = parse_text(definitions[key], key, pkg, short, kind)
+        new = parse_text(body, key, pkg, short, kind)
         if diff_interfaces({old.key: old}, {new.key: new}):
-            raise VfsError(f"conflicting MCAP definitions for {name}")
+            raise VfsError(f"conflicting MCAP definitions for {key}")
     else:
-        definitions[name] = body
+        definitions[key] = body
 
 
 def _split_ros2msg(main_name: str, text: str) -> dict[str, str]:
-    """Split a concatenated ros2msg definition into ``{type_name: body}``."""
+    """Split a concatenated ros2msg definition into ``{pkg/kind/Name: body}``.
+
+    A service event schema has an empty main block followed by an ``SRV:``
+    block, so an empty main block is kept only when it is the whole schema (a
+    message without fields, such as ``std_msgs/msg/Empty``).
+    """
     blocks: dict[str, str] = {}
-    current = main_name
+    current = _key("MSG", main_name)
     lines: list[str] = []
     iterator = iter(text.splitlines())
     for line in iterator:
         if _SEPARATOR.match(line.strip()):
-            _store_definition(blocks, current, "\n".join(lines).strip("\n"))
+            _store_block(blocks, current, lines)
             lines = []
-            current = _next_msg_header(iterator, main_name)
+            current = _next_header(iterator, main_name)
             continue
         lines.append(line)
-    _store_definition(blocks, current, "\n".join(lines).strip("\n"))
-    return blocks
+    _store_block(blocks, current, lines)
+    return blocks or {_key("MSG", main_name): ""}
 
 
-def _next_msg_header(iterator: object, fallback: str) -> str:
+def _store_block(blocks: dict[str, str], key: str, lines: list[str]) -> None:
+    body = "\n".join(lines).strip("\n")
+    if body.strip():
+        _store_definition(blocks, key, body)
+
+
+def _next_header(iterator: object, fallback: str) -> str:
     for line in iterator:  # type: ignore[attr-defined]
         stripped = line.strip()
         if not stripped:
             continue
-        match = _MSG_HEADER.match(stripped)
-        return match.group(1) if match else fallback
-    return fallback
+        match = _HEADER.match(stripped)
+        return _key(match.group(1), match.group(2)) if match else _key("MSG", fallback)
+    return _key("MSG", fallback)
+
+
+def _key(header: str, type_name: str) -> str:
+    """Interface key for a block: ``SRV:`` blocks are services, the rest messages."""
+    pkg, short = _normalise(type_name)
+    return f"{pkg}/{'srv' if header == 'SRV' else 'msg'}/{short}"
 
 
 def _normalise(type_name: str) -> tuple[str, str]:

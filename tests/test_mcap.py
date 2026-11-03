@@ -34,9 +34,18 @@ POINT = "float64 x\nfloat64 y\n"
 
 def test_split_ros2msg_attributes_blocks():
     blocks = _split_ros2msg("demo_msgs/msg/Pose", POSE_CONCAT)
-    assert set(blocks) == {"demo_msgs/msg/Pose", "geometry_msgs/Point"}
+    assert set(blocks) == {"demo_msgs/msg/Pose", "geometry_msgs/msg/Point"}
     assert blocks["demo_msgs/msg/Pose"] == "float32 theta\ngeometry_msgs/Point position"
-    assert blocks["geometry_msgs/Point"] == "float64 x\nfloat64 y"
+    assert blocks["geometry_msgs/msg/Point"] == "float64 x\nfloat64 y"
+
+
+def test_split_ros2msg_service_event_and_empty_message():
+    """Service events carry only an SRV block; a field-less message stays a message."""
+    event = "=" * 80 + "\nSRV: demo_srvs/srv/Add\nint64 a\n---\nint64 sum\n"
+    assert _split_ros2msg("demo_srvs/srv/Add_Event", event) == {
+        "demo_srvs/srv/Add": "int64 a\n---\nint64 sum"
+    }
+    assert _split_ros2msg("std_msgs/msg/Empty", "") == {"std_msgs/msg/Empty": ""}
 
 
 def test_convert_ros2idl_subset():
@@ -315,6 +324,49 @@ def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):
     result = runner.invoke(app, ["bag-check", str(bag)])
     assert result.exit_code == 2
     assert "unsupported ros2idl" in result.output
+
+
+def test_bag_check_skips_schemas_without_definitions(tmp_path, monkeypatch):
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo_msgs", msgs={"Pose": POSE_V2})
+    write_package(prefix / "share", "geometry_msgs", msgs={"Point": POINT})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    bag = tmp_path / "missing.mcap"
+    _write_bag(
+        bag,
+        [("demo_msgs/msg/Pose", "ros2msg", POSE_CONCAT), ("demo_msgs/action/Go_Feedback", "", "")],
+    )
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 1
+    assert "RS003" in result.stdout
+    assert "demo_msgs/action/Go_Feedback" in result.output
+
+
+def test_bag_check_compares_service_event_definitions(tmp_path, monkeypatch):
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "demo_srvs", srvs={"Add": "int64 a\n---\nint32 sum\n"})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    bag = tmp_path / "events.mcap"
+    event = "=" * 80 + "\nSRV: demo_srvs/srv/Add\nint64 a\n---\nint64 sum\n"
+    _write_bag(bag, {"demo_srvs/srv/Add_Event": event})
+    result = runner.invoke(app, ["bag-check", str(bag), "--format", "json"])
+    assert result.exit_code == 1
+    finding = json.loads(result.stdout)["findings"][0]
+    assert (finding["rule"], finding["interface"], finding["section"]) == (
+        "RS003",
+        "demo_srvs/srv/Add",
+        "response",
+    )
+
+
+def test_bag_check_accepts_field_less_messages(tmp_path, monkeypatch):
+    prefix = tmp_path / "install"
+    write_package(prefix / "share", "std_msgs", msgs={"Empty": ""})
+    monkeypatch.setenv("AMENT_PREFIX_PATH", str(prefix))
+    bag = tmp_path / "empty-message.mcap"
+    _write_bag(bag, {"std_msgs/msg/Empty": ""})
+    result = runner.invoke(app, ["bag-check", str(bag)])
+    assert result.exit_code == 0, result.output
 
 
 def test_mcap_without_schemas_is_a_tool_error(tmp_path):
