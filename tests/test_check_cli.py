@@ -39,6 +39,44 @@ def test_check_against_git_ref(tmp_path):
     assert "RS003" in result.stdout
 
 
+def test_check_against_merge_base_ignores_newer_baseline_changes(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo, "my_msgs", msgs={"Pose": "float32 theta\n"})
+    git_commit_all(repo, "base")
+    subprocess.run(["git", "-C", str(repo), "branch", "-q", "-M", "main"], check=True)
+    subprocess.run(["git", "-C", str(repo), "switch", "-q", "-c", "feature"], check=True)
+    (repo / "my_msgs" / "msg" / "Extra.msg").write_text("int32 x\n")
+    git_commit_all(repo, "feature adds an interface")
+    subprocess.run(["git", "-C", str(repo), "switch", "-q", "main"], check=True)
+    (repo / "my_msgs" / "msg" / "Pose.msg").write_text("float32 theta\nfloat32 speed\n")
+    git_commit_all(repo, "main adds a field the feature branch has not merged")
+    subprocess.run(["git", "-C", str(repo), "switch", "-q", "feature"], check=True)
+
+    stale = runner.invoke(app, ["check", str(repo), "--against", "main"])
+    assert stale.exit_code == 1
+    assert "RS001" in stale.stdout  # main's new field looks removed on the branch
+
+    result = runner.invoke(app, ["check", str(repo), "--against", "main..."])
+    assert result.exit_code == 0
+    assert "against  git:main... (merge base " in result.stdout
+    assert "1 new (my_msgs/msg/Extra)" in result.stdout
+
+
+def test_check_merge_base_without_shared_history_is_an_error(tmp_path):
+    repo = make_git_repo(tmp_path / "repo")
+    write_package(repo, "my_msgs", msgs={"Pose": "float32 theta\n"})
+    git_commit_all(repo, "v1")
+    subprocess.run(["git", "-C", str(repo), "branch", "-q", "-M", "main"], check=True)
+    subprocess.run(["git", "-C", str(repo), "switch", "-q", "--orphan", "other"], check=True)
+    (repo / "README").write_text("unrelated history\n")
+    git_commit_all(repo, "unrelated")
+    subprocess.run(["git", "-C", str(repo), "switch", "-q", "main"], check=True)
+
+    result = runner.invoke(app, ["check", str(repo), "--against", "other..."])
+    assert result.exit_code == 2
+    assert "no merge base between other and HEAD" in result.output
+
+
 def test_check_clean_exits_0(tmp_path):
     write_package(tmp_path / "old", "my_msgs", msgs={"Pose": "float32 theta\n"})
     write_package(tmp_path / "new", "my_msgs", msgs={"Pose": "float32 theta\n"})

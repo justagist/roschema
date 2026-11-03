@@ -90,6 +90,9 @@ roschema check --against origin/main
 # check before pushing, against the last commit
 roschema check --against HEAD
 
+# only this branch's changes, even if main has moved on since it was cut
+roschema check --against origin/main...
+
 # scope to one package, or a subtree with a glob (and exclude vendored packages)
 roschema check src/my_msgs --against origin/main
 roschema check 'src/**' --against origin/main --exclude 'vendor_*'
@@ -145,6 +148,12 @@ includes colcon's `build/`, `install/` and `log/` directories.
 MCAP bag (`.mcap`) or a lockfile (`roschema.lock`); the type is detected
 automatically. Initialised git submodules are compared at the commit the
 baseline records for them.
+
+`REF...` (three dots, as in `git diff REF...`) compares against the merge base
+of `REF` and `HEAD`, the commit the branch started from. Without it, interfaces
+added on `main` after a branch was cut look removed on the branch. In a pull
+request's CI, `actions/checkout` already builds the merge with the base branch,
+so a plain `origin/main` is enough there.
 
 Every report says how much was compared, for example `compared 12 interface(s)
 in 3 package(s); 1 new (my_msgs/msg/Status)`. New interfaces are not findings,

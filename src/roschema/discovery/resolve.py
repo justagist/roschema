@@ -6,7 +6,7 @@ import os
 from fnmatch import fnmatch
 from pathlib import Path
 
-from ..vfs import VFS, GitTreeFS, RealFS, VfsError, git_toplevel, rev_parse_verify
+from ..vfs import VFS, GitTreeFS, RealFS, VfsError, git_toplevel, merge_base, rev_parse_verify
 from .discover import discover, discover_named
 from .model import DiscoveredPackage, Resolution
 
@@ -129,7 +129,8 @@ def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
 
     Auto-detected in order: an ``.mcap`` bag, a ``roschema.lock`` file, a git
     ref (validated against the repo containing ``target_dir``), then a directory
-    path. MCAP and lockfile baselines arrive in later phases.
+    path. ``REF...`` means the merge base of ``REF`` and ``HEAD``, as in
+    ``git diff REF...``, so a branch is compared with the commit it started from.
 
     Args:
         against: The ``--against`` argument value.
@@ -158,6 +159,16 @@ def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
         raise VfsError(f"no such baseline directory: {against}")
 
     repo_root = git_toplevel(target_dir)
+    if against.endswith("..."):
+        if repo_root is None:
+            raise VfsError(f"{against!r} needs a git repository around the target")
+        base = merge_base(repo_root, against[:-3])
+        rel = os.path.relpath(target_dir, repo_root)
+        git_vfs = GitTreeFS(repo_root, base)
+        packages = discover(git_vfs, "." if rel == "." else rel)
+        return Resolution(
+            vfs=git_vfs, packages=packages, source=f"git:{against} (merge base {base[:12]})"
+        )
     if repo_root is not None and _is_git_ref(repo_root, against):
         rel = os.path.relpath(target_dir, repo_root)
         git_vfs = GitTreeFS(repo_root, against)

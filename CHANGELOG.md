@@ -3,6 +3,13 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `--against REF...` compares against the merge base of `REF` and `HEAD`, so a
+  branch that is behind `main` is not blamed for `main`'s newer changes.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added
