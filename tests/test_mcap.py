@@ -316,6 +316,7 @@ def test_mcap_rejects_unsupported_encodings(tmp_path, with_supported):
         "module demo { module msg { struct T { long x; }; module T_Constants { "
         "const long MODE = 1; }; }; };",
         "module demo { module msg { struct Base { long x; }; struct T : Base { long y; }; }; };",
+        "module demo { module msg { struct T { wchar c; }; }; };",  # no msg equivalent
     ],
 )
 def test_mcap_rejects_partial_idl_conversion(tmp_path, idl):

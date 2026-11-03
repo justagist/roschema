@@ -185,7 +185,6 @@ _IDL_SCALAR = {
     "boolean": "bool",
     "octet": "byte",
     "char": "char",
-    "wchar": "char",
     "int8": "int8",
     "uint8": "uint8",
     "int16": "int16",
