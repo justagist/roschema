@@ -181,7 +181,8 @@ def _convert_ros2idl(text: str) -> dict[str, str]:
     """Convert the msg-equivalent subset of an IDL blob into ``{type: body}``."""
     text = re.sub(r"//[^\n]*", "", text)
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    if re.search(r"\b(?:enum|union|typedef)\s+\w+|(?:^|[;{}])\s*@\w+", text, re.MULTILINE):
+    code = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
+    if re.search(r"\b(?:enum|union|typedef)\s+\w+|(?:^|[;{}])\s*@\w+", code, re.MULTILINE):
         raise VfsError("unsupported ros2idl construct; conversion would be incomplete")
     blocks: dict[str, str] = {}
     for struct_match in _STRUCT_RE.finditer(text):

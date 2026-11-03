@@ -67,6 +67,13 @@ def test_convert_ros2idl_subset():
     assert "geometry_msgs/Point point" in body
 
 
+def test_convert_ros2idl_accepts_keywords_in_string_constants():
+    idl = (
+        'module demo { module msg { struct T { const string NOTE = "enum Choice"; int32 x; }; }; };'
+    )
+    assert _convert_ros2idl(idl) == {"demo/msg/T": 'string NOTE="enum Choice"\nint32 x'}
+
+
 # --- end-to-end with a real MCAP ---
 
 pytest.importorskip("mcap")
