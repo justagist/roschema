@@ -47,8 +47,10 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
-console = Console()
-err_console = Console(stderr=True)
+# Soft wrapping leaves line breaks to the terminal, so CI logs and pipes (where
+# Rich assumes 80 columns) keep paths and messages on one line.
+console = Console(soft_wrap=True)
+err_console = Console(stderr=True, soft_wrap=True)
 
 # A bag check asks whether current code can still decode the recording, which is
 # a wire question; constant and other source-level changes do not affect it.

@@ -177,7 +177,9 @@ def test_check_package_name_from_ament_warns(tmp_path, monkeypatch):
 
     result = runner.invoke(app, ["ls", "my_msgs"])
     assert result.exit_code == 0
-    assert "warning: 'my_msgs' is not a source package" in result.output
+    assert "is not a source package under the working directory; using the installed" in (
+        result.output
+    )
 
 
 def test_check_from_superproject_compares_submodule_packages(tmp_path, monkeypatch):
@@ -198,6 +200,15 @@ def test_check_from_superproject_compares_submodule_packages(tmp_path, monkeypat
     result = runner.invoke(app, ["check", "--against", "HEAD"])
     assert result.exit_code == 1
     assert "RS003" in result.output
+
+
+def test_text_output_keeps_long_lines_whole(tmp_path):
+    """Non-terminal output (CI logs) must not split paths across lines."""
+    deep = tmp_path / ("nested_directory_" * 6)
+    write_package(deep / "old", "my_msgs", msgs={"Pose": "float32 theta\n"})
+    write_package(deep / "new", "my_msgs", msgs={"Pose": "float64 theta\n"})
+    result = runner.invoke(app, ["check", str(deep / "new"), "--against", str(deep / "old")])
+    assert f"checking path:{deep / 'new'}  against  path:{deep / 'old'}" in result.stdout
 
 
 def test_baseline_git_ref_shadows_dir_with_note(tmp_path, monkeypatch):
