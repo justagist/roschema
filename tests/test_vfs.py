@@ -74,8 +74,18 @@ def test_gittreefs_reads_historical_content(tmp_path):
 
 def _add_submodule(repo, sub, path):
     subprocess.run(
-        ["git", "-C", str(repo), "-c", "protocol.file.allow=always", "submodule", "add",
-         "-q", str(sub), path],
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            str(sub),
+            path,
+        ],
         check=True,
         capture_output=True,
     )

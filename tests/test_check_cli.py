@@ -100,9 +100,7 @@ def test_github_no_prefix_at_repo_root(tmp_path):
     git_commit_all(repo, "v1")
     (repo / "src" / "pkg" / "msg" / "A.msg").write_text("float64 x\n")
 
-    result = runner.invoke(
-        app, ["check", str(repo), "--against", "HEAD", "--format", "github"]
-    )
+    result = runner.invoke(app, ["check", str(repo), "--against", "HEAD", "--format", "github"])
     assert result.exit_code == 1
     assert "file=src/pkg/msg/A.msg" in result.stdout  # VFS-relative already full
 
@@ -189,8 +187,18 @@ def test_check_from_superproject_compares_submodule_packages(tmp_path, monkeypat
     git_commit_all(sub, "v1")
     repo = make_git_repo(tmp_path / "repo")
     subprocess.run(
-        ["git", "-C", str(repo), "-c", "protocol.file.allow=always", "submodule", "add",
-         "-q", str(sub), "src/vendor"],
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            str(sub),
+            "src/vendor",
+        ],
         check=True,
         capture_output=True,
     )
@@ -227,8 +235,16 @@ def test_commands_never_use_the_locale_encoding(tmp_path):
         ["check", "--against", str(lock)],
     ):
         result = subprocess.run(
-            [sys.executable, "-X", "warn_default_encoding", "-W", "error::EncodingWarning",
-             "-m", "roschema.cli", *args],
+            [
+                sys.executable,
+                "-X",
+                "warn_default_encoding",
+                "-W",
+                "error::EncodingWarning",
+                "-m",
+                "roschema.cli",
+                *args,
+            ],
             cwd=repo,
             capture_output=True,
             text=True,
@@ -265,9 +281,7 @@ def test_baseline_dotslash_uses_directory(tmp_path, monkeypatch):
 
 def test_check_missing_mcap_baseline_errors(tmp_path):
     write_package(tmp_path / "new", "my_msgs", msgs={"Pose": "float32 t\n"})
-    result = runner.invoke(
-        app, ["check", str(tmp_path / "new"), "--against", "baseline.mcap"]
-    )
+    result = runner.invoke(app, ["check", str(tmp_path / "new"), "--against", "baseline.mcap"])
     assert result.exit_code == 2  # file does not exist
 
 

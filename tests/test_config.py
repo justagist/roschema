@@ -83,9 +83,7 @@ def test_invalid_level_is_config_error(tmp_path):
 
 
 def test_allow_without_reason_is_config_error(tmp_path):
-    (tmp_path / "roschema.toml").write_text(
-        '[check.allow]\n"p/msg/T.a" = { rules = ["RS001"] }\n'
-    )
+    (tmp_path / "roschema.toml").write_text('[check.allow]\n"p/msg/T.a" = { rules = ["RS001"] }\n')
     with pytest.raises(ConfigError):
         load_config(tmp_path, ())
 
@@ -125,9 +123,7 @@ def test_finalize_allowlist_suppression():
 
 def test_finalize_allowlist_rule_scoped():
     cfg = Config(
-        workspace=ScopeConfig(
-            allow=(AllowEntry("demo/msg/T.a", ("RS999",), "wrong rule"),)
-        )
+        workspace=ScopeConfig(allow=(AllowEntry("demo/msg/T.a", ("RS999",), "wrong rule"),))
     )
     out = finalize_findings([_finding("RS001")], cfg, None)
     assert out[0].suppressed is False  # allow entry names a different rule

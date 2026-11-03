@@ -109,9 +109,7 @@ def test_tool_version_not_used_for_comparison(tmp_path):
     la.write_text(build_lock(ifaces, "0.1.0"))
     lb.write_text(build_lock(ifaces, "9.9.9"))
     # different tool_version, identical interface content -> both load the same
-    assert LockFS(str(la)).read_text("p/msg/Foo.msg") == LockFS(str(lb)).read_text(
-        "p/msg/Foo.msg"
-    )
+    assert LockFS(str(la)).read_text("p/msg/Foo.msg") == LockFS(str(lb)).read_text("p/msg/Foo.msg")
 
 
 def test_freeze_normalizes_before_hashing(tmp_path):

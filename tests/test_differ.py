@@ -57,33 +57,21 @@ def test_same_package_qualification_is_not_a_change():
 
 
 def test_array_kind_changed():
-    assert _types(_events("int32[] x\n", "int32[4] x\n")) == [
-        ChangeType.FIELD_ARRAY_KIND_CHANGED
-    ]
+    assert _types(_events("int32[] x\n", "int32[4] x\n")) == [ChangeType.FIELD_ARRAY_KIND_CHANGED]
 
 
 def test_bound_tightened_and_loosened():
-    assert _types(_events("string<=64 s\n", "string<=16 s\n")) == [
-        ChangeType.FIELD_BOUND_TIGHTENED
-    ]
-    assert _types(_events("uint8[<=4] a\n", "uint8[<=9] a\n")) == [
-        ChangeType.FIELD_BOUND_LOOSENED
-    ]
+    assert _types(_events("string<=64 s\n", "string<=16 s\n")) == [ChangeType.FIELD_BOUND_TIGHTENED]
+    assert _types(_events("uint8[<=4] a\n", "uint8[<=9] a\n")) == [ChangeType.FIELD_BOUND_LOOSENED]
 
 
 def test_string_bound_removed_is_loosened():
-    assert _types(_events("string<=10 s\n", "string s\n")) == [
-        ChangeType.FIELD_BOUND_LOOSENED
-    ]
+    assert _types(_events("string<=10 s\n", "string s\n")) == [ChangeType.FIELD_BOUND_LOOSENED]
 
 
 def test_sequence_bound_added_or_removed_is_a_bound_change():
-    assert _types(_events("int32[] x\n", "int32[<=4] x\n")) == [
-        ChangeType.FIELD_BOUND_TIGHTENED
-    ]
-    assert _types(_events("int32[<=4] x\n", "int32[] x\n")) == [
-        ChangeType.FIELD_BOUND_LOOSENED
-    ]
+    assert _types(_events("int32[] x\n", "int32[<=4] x\n")) == [ChangeType.FIELD_BOUND_TIGHTENED]
+    assert _types(_events("int32[<=4] x\n", "int32[] x\n")) == [ChangeType.FIELD_BOUND_LOOSENED]
     assert _types(_events("int32[<=4] x\n", "int32[4] x\n")) == [
         ChangeType.FIELD_ARRAY_KIND_CHANGED
     ]
@@ -97,20 +85,14 @@ def test_reordered():
 
 
 def test_default_changed():
-    assert _types(_events("int32 a 1\n", "int32 a 2\n")) == [
-        ChangeType.FIELD_DEFAULT_CHANGED
-    ]
+    assert _types(_events("int32 a 1\n", "int32 a 2\n")) == [ChangeType.FIELD_DEFAULT_CHANGED]
 
 
 def test_constant_events():
     assert _types(_events("int32 X=1\n", "")) == [ChangeType.CONSTANT_REMOVED]
     assert _types(_events("", "int32 X=1\n")) == [ChangeType.CONSTANT_ADDED]
-    assert _types(_events("int32 X=1\n", "int32 X=2\n")) == [
-        ChangeType.CONSTANT_VALUE_CHANGED
-    ]
-    assert _types(_events("int32 X=1\n", "uint8 X=1\n")) == [
-        ChangeType.CONSTANT_TYPE_CHANGED
-    ]
+    assert _types(_events("int32 X=1\n", "int32 X=2\n")) == [ChangeType.CONSTANT_VALUE_CHANGED]
+    assert _types(_events("int32 X=1\n", "uint8 X=1\n")) == [ChangeType.CONSTANT_TYPE_CHANGED]
 
 
 def test_interface_added_and_removed():

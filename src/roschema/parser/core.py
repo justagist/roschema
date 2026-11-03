@@ -39,9 +39,7 @@ _INT_TYPES = frozenset(
 _FLOAT_TYPES = frozenset({"float32", "float64"})
 
 
-def parse_text(
-    text: str, source_file: str, package: str, name: str, kind: str
-) -> InterfaceFile:
+def parse_text(text: str, source_file: str, package: str, name: str, kind: str) -> InterfaceFile:
     """Parse interface source into an :class:`InterfaceFile`.
 
     Args:
@@ -93,9 +91,7 @@ def parse_text(
     )
 
 
-def _parse_section(
-    lines: list[tuple[int, str]], source_file: str
-) -> tuple[Field | Constant, ...]:
+def _parse_section(lines: list[tuple[int, str]], source_file: str) -> tuple[Field | Constant, ...]:
     members: list[Field | Constant] = []
     seen: set[tuple[type, str]] = set()
     for lineno, raw in lines:
@@ -186,9 +182,7 @@ def _parse_member(
                 "constant is missing a value after '='", source_file, lineno, indent + 1, raw
             )
         if type_ref.array_kind is not ArrayKind.NONE:
-            raise ParseError(
-                "constants cannot be arrays", source_file, lineno, indent + 1, raw
-            )
+            raise ParseError("constants cannot be arrays", source_file, lineno, indent + 1, raw)
         if not type_ref.is_builtin:
             raise ParseError(
                 "constant type must be a primitive type", source_file, lineno, indent + 1, raw
@@ -218,9 +212,7 @@ def _parse_member(
     )
 
 
-def _parse_type(
-    token: str, col: int, lineno: int, raw: str, source_file: str
-) -> TypeRef:
+def _parse_type(token: str, col: int, lineno: int, raw: str, source_file: str) -> TypeRef:
     array_kind = ArrayKind.NONE
     array_bound: int | None = None
     base_part = token
@@ -243,9 +235,7 @@ def _parse_type(
             array_bound = int(spec)
 
     if base_part == "":
-        raise ParseError(
-            f"missing base type in {token!r}", source_file, lineno, col, raw
-        )
+        raise ParseError(f"missing base type in {token!r}", source_file, lineno, col, raw)
 
     if "/" in base_part:
         pkg, _, tname = base_part.partition("/")
@@ -284,9 +274,7 @@ def _parse_type(
         )
 
     if not _NAME_RE.match(base_part):
-        raise ParseError(
-            f"invalid type name {base_part!r}", source_file, lineno, col, raw
-        )
+        raise ParseError(f"invalid type name {base_part!r}", source_file, lineno, col, raw)
     return TypeRef(
         base=base_part,
         package=None,

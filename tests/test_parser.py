@@ -125,9 +125,7 @@ def test_srv_two_sections():
 
 
 def test_action_three_sections_with_empty():
-    iface = parse_text(
-        "int32 goal\n---\n---\nint32 fb\n", "p/action/A.action", "p", "A", "action"
-    )
+    iface = parse_text("int32 goal\n---\n---\nint32 fb\n", "p/action/A.action", "p", "A", "action")
     kinds = [s.kind for s in iface.sections]
     assert kinds == [SectionKind.GOAL, SectionKind.RESULT, SectionKind.FEEDBACK]
     assert iface.sections[1].members == ()  # empty result section is legal

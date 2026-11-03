@@ -86,13 +86,9 @@ def diff_interfaces(
         old_iface = old.get(key)
         new_iface = new.get(key)
         if old_iface is not None and new_iface is None:
-            events.append(
-                ChangeEvent(ChangeType.INTERFACE_REMOVED, key, None, "", old=old_iface)
-            )
+            events.append(ChangeEvent(ChangeType.INTERFACE_REMOVED, key, None, "", old=old_iface))
         elif new_iface is not None and old_iface is None:
-            events.append(
-                ChangeEvent(ChangeType.INTERFACE_ADDED, key, None, "", new=new_iface)
-            )
+            events.append(ChangeEvent(ChangeType.INTERFACE_ADDED, key, None, "", new=new_iface))
         elif old_iface is not None and new_iface is not None:
             _diff_interface(key, old_iface, new_iface, events)
     return events
@@ -189,18 +185,14 @@ def _diff_fields(
             ChangeEvent(ChangeType.FIELD_REMOVED, key, section, name, old=old_by[name][1])
         )
     for name in added:
-        events.append(
-            ChangeEvent(ChangeType.FIELD_ADDED, key, section, name, new=new_by[name][1])
-        )
+        events.append(ChangeEvent(ChangeType.FIELD_ADDED, key, section, name, new=new_by[name][1]))
 
     for name in (n for n in old_by if n in new_by):
         old_field = old_by[name][1]
         new_field = new_by[name][1]
         change = _classify_type_change(old_field, new_field, package)
         if change is not None:
-            events.append(
-                ChangeEvent(change, key, section, name, old=old_field, new=new_field)
-            )
+            events.append(ChangeEvent(change, key, section, name, old=old_field, new=new_field))
         elif _default_changed(old_field, new_field):
             events.append(
                 ChangeEvent(
@@ -304,9 +296,7 @@ def _diff_constants(
             ChangeEvent(ChangeType.CONSTANT_REMOVED, key, section, name, old=old_by[name])
         )
     for name in (n for n in new_by if n not in old_by):
-        events.append(
-            ChangeEvent(ChangeType.CONSTANT_ADDED, key, section, name, new=new_by[name])
-        )
+        events.append(ChangeEvent(ChangeType.CONSTANT_ADDED, key, section, name, new=new_by[name]))
     for name in (n for n in old_by if n in new_by):
         old_c = old_by[name]
         new_c = new_by[name]

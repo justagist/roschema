@@ -246,13 +246,11 @@ def _resolve_target(
     target: str | None, *, allow_empty_glob: bool = False, include_empty: bool = False
 ) -> Resolution:
     """Resolve a CLI target, warning when a package name resolves to an installed copy."""
-    res = resolve_target(
-        target, allow_empty_glob=allow_empty_glob, include_empty=include_empty
-    )
+    res = resolve_target(target, allow_empty_glob=allow_empty_glob, include_empty=include_empty)
     if res.source.startswith("ament:"):
         err_console.print(
             f"[yellow]warning:[/yellow] {target!r} is not a source package under the "
-            f"working directory; using the installed copy from {res.source[len('ament:'):]}"
+            f"working directory; using the installed copy from {res.source[len('ament:') :]}"
         )
     return res
 
@@ -477,9 +475,9 @@ def freeze(
         str | None,
         typer.Argument(help="Path, package name, or omit for the current workspace."),
     ] = None,
-    output: Annotated[
-        Path, typer.Option("-o", "--output", help="Lockfile path to write.")
-    ] = Path("roschema.lock"),
+    output: Annotated[Path, typer.Option("-o", "--output", help="Lockfile path to write.")] = Path(
+        "roschema.lock"
+    ),
     exclude: Annotated[
         list[str] | None,
         typer.Option("--exclude", help="Glob of packages/interfaces to skip."),
@@ -533,8 +531,7 @@ def _to_json(resolution: Resolution) -> dict[str, object]:
                 "name": pkg.name,
                 "path": pkg.path,
                 "interfaces": [
-                    {"kind": ref.kind, "name": ref.name, "path": ref.path}
-                    for ref in pkg.interfaces
+                    {"kind": ref.kind, "name": ref.name, "path": ref.path} for ref in pkg.interfaces
                 ],
             }
             for pkg in resolution.packages
@@ -554,9 +551,7 @@ def _print_text(resolution: Resolution) -> None:
             console.print(f"  {ref.kind:<7} {ref.name}  [dim]{ref.path}[/dim]")
             total += 1
     plural = "interface" if total == 1 else "interfaces"
-    console.print(
-        f"\n[dim]{len(resolution.packages)} package(s), {total} {plural}[/dim]"
-    )
+    console.print(f"\n[dim]{len(resolution.packages)} package(s), {total} {plural}[/dim]")
 
 
 if __name__ == "__main__":  # pragma: no cover

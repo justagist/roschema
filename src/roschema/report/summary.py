@@ -37,9 +37,7 @@ def summarize(findings: list[Finding]) -> Summary:
     by_package: dict[str, list[Finding]] = {}
     for finding in reported:
         by_package.setdefault(finding.package, []).append(finding)
-    advisories = tuple(
-        _advise(package, by_package[package]) for package in sorted(by_package)
-    )
+    advisories = tuple(_advise(package, by_package[package]) for package in sorted(by_package))
     return Summary(
         total=len(reported),
         errors=errors,
@@ -51,9 +49,7 @@ def summarize(findings: list[Finding]) -> Summary:
 
 def _advise(package: str, findings: list[Finding]) -> PackageAdvisory:
     wire_source_errors = [
-        f
-        for f in findings
-        if f.severity == "error" and set(f.levels) & {"wire", "source"}
+        f for f in findings if f.severity == "error" and set(f.levels) & {"wire", "source"}
     ]
     if wire_source_errors:
         n = len(wire_source_errors)

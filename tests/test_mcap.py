@@ -112,9 +112,7 @@ def _write_bag(
                 message_encoding="cdr",
                 schema_id=schema_id,
             )
-            writer.add_message(
-                channel_id=channel_id, log_time=0, data=b"", publish_time=0
-            )
+            writer.add_message(channel_id=channel_id, log_time=0, data=b"", publish_time=0)
         writer.finish()
 
 

@@ -61,9 +61,7 @@ def test_rs110_takes_root_severity_and_skips_suppressed_roots():
     old = _map(_iface("Point", "string<=8 s\n"), _iface("Pose", "my_msgs/Point p\n"))
     new = _map(_iface("Point", "string<=16 s\n"), _iface("Pose", "my_msgs/Point p\n"))
     loosened = evaluate(diff_interfaces(old, new))  # RS008, a warning
-    assert [(f.rule, f.severity) for f in transitive_findings(new, loosened)] == [
-        ("RS110", "warn")
-    ]
+    assert [(f.rule, f.severity) for f in transitive_findings(new, loosened)] == [("RS110", "warn")]
     suppressed = [replace(f, suppressed=True) for f in loosened]
     assert transitive_findings(new, suppressed) == []
 
@@ -98,14 +96,22 @@ def test_cli_deep_respects_allowlisted_root(tmp_path):
 def test_cli_deep_adds_rs110(tmp_path):
     old = tmp_path / "old"
     new = tmp_path / "new"
-    write_package(old, "my_msgs", msgs={
-        "Point": "float64 x\nfloat64 y\n",
-        "Pose": "my_msgs/Point position\nfloat32 theta\n",
-    })
-    write_package(new, "my_msgs", msgs={
-        "Point": "float32 x\nfloat64 y\n",  # changed
-        "Pose": "my_msgs/Point position\nfloat32 theta\n",  # unchanged
-    })
+    write_package(
+        old,
+        "my_msgs",
+        msgs={
+            "Point": "float64 x\nfloat64 y\n",
+            "Pose": "my_msgs/Point position\nfloat32 theta\n",
+        },
+    )
+    write_package(
+        new,
+        "my_msgs",
+        msgs={
+            "Point": "float32 x\nfloat64 y\n",  # changed
+            "Pose": "my_msgs/Point position\nfloat32 theta\n",  # unchanged
+        },
+    )
 
     shallow = runner.invoke(app, ["check", str(new), "--against", str(old)])
     assert "RS110" not in shallow.stdout

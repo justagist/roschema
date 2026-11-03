@@ -73,8 +73,7 @@ def resolve_target(
         return ament
 
     raise VfsError(
-        f"cannot resolve target {target!r}: not a directory and not found on "
-        f"AMENT_PREFIX_PATH"
+        f"cannot resolve target {target!r}: not a directory and not found on AMENT_PREFIX_PATH"
     )
 
 
@@ -170,9 +169,7 @@ def resolve_baseline(against: str, target_dir: str | Path) -> Resolution:
         real_vfs: VFS = RealFS(path)
         return Resolution(vfs=real_vfs, packages=discover(real_vfs, "."), source=f"path:{path}")
 
-    raise VfsError(
-        f"cannot resolve baseline {against!r}: not a git ref, directory, .mcap or .lock"
-    )
+    raise VfsError(f"cannot resolve baseline {against!r}: not a git ref, directory, .mcap or .lock")
 
 
 def resolve_bag(bag_path: str) -> Resolution:

@@ -247,9 +247,7 @@ class GitTreeFS:
         except FileNotFoundError as exc:  # git not installed
             raise VfsError("git executable not found") from exc
         except subprocess.CalledProcessError as exc:
-            raise VfsError(
-                f"git {' '.join(args)} failed: {exc.stderr.strip()}"
-            ) from exc
+            raise VfsError(f"git {' '.join(args)} failed: {exc.stderr.strip()}") from exc
         return proc.stdout
 
 

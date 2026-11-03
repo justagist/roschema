@@ -200,9 +200,7 @@ def load_config(
     )
 
 
-def _load_workspace(
-    root: Path, config_path: Path | None
-) -> tuple[ScopeConfig, dict[str, str]]:
+def _load_workspace(root: Path, config_path: Path | None) -> tuple[ScopeConfig, dict[str, str]]:
     """Find inherited workspace settings without treating a package as its workspace."""
     if config_path is not None:
         if not config_path.is_file():
@@ -262,9 +260,7 @@ def _parse_scope(data: dict[str, object]) -> ScopeConfig:
     _reject_unknown(check, ("level", "deep", "rules", "allow"), "[check]")
     level = check.get("level")
     if level is not None and (not isinstance(level, str) or level not in LEVEL_BUNDLES):
-        raise ConfigError(
-            f"invalid level {level!r}; expected one of {sorted(LEVEL_BUNDLES)}"
-        )
+        raise ConfigError(f"invalid level {level!r}; expected one of {sorted(LEVEL_BUNDLES)}")
     deep = check.get("deep")
     if deep is not None and not isinstance(deep, bool):
         raise ConfigError("[check]: deep must be a boolean")
@@ -286,8 +282,7 @@ def _parse_rules(raw: dict[str, object], where: str) -> dict[str, str]:
             raise ConfigError(f"{where}: unknown rule {rule_id!r}")
         if not isinstance(severity, str) or severity not in _SEVERITIES:
             raise ConfigError(
-                f"{where}: {rule_id} has invalid severity {severity!r}; "
-                f"expected off, warn or error"
+                f"{where}: {rule_id} has invalid severity {severity!r}; expected off, warn or error"
             )
         rules[rule_id] = str(severity)
     return rules
@@ -301,9 +296,7 @@ def _parse_allow(raw: dict[str, object]) -> tuple[AllowEntry, ...]:
         _reject_unknown(spec_dict, ("rules", "reason"), f"allowlist entry {target!r}")
         reason = spec_dict.get("reason")
         if not isinstance(reason, str) or not reason.strip():
-            raise ConfigError(
-                f"allowlist entry {target!r} must include a non-empty 'reason'"
-            )
+            raise ConfigError(f"allowlist entry {target!r} must include a non-empty 'reason'")
         raw_rules = spec_dict.get("rules", [])
         if not isinstance(raw_rules, list):
             raise ConfigError(f"allowlist entry {target!r}: rules must be a list")
