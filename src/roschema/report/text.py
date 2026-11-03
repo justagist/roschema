@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from rich.console import Console
 
 from ..rules import LEVEL_LABEL, Finding
-from .summary import Coverage, summarize
+from .changes import Change
+from .summary import Coverage, Summary, summarize
 
 _SEVERITY_STYLE = {"error": "red", "warn": "yellow"}
 _BUMP_STYLE = {"MAJOR": "red", "MINOR": "yellow", "PATCH": "green"}
@@ -17,18 +20,22 @@ def render_text(
     new_source: str,
     old_source: str,
     coverage: Coverage,
+    changes: Sequence[Change] = (),
 ) -> None:
     """Render findings to ``console`` with coverage, a summary and semver advisories.
 
-    Suppressed findings are not listed individually but are counted.
+    Suppressed findings are not listed individually but are counted. Additions
+    among ``changes`` count towards the semver advice.
     """
     console.print(f"[bold]checking[/bold] {new_source}  [dim]against[/dim]  {old_source}")
     console.print(f"[dim]{coverage.describe()}[/dim]")
     reported = [f for f in findings if not f.suppressed]
+    summary = summarize(findings, changes)
 
     if not reported:
         console.print("[green]no breaking changes found[/green]")
         _print_suppressed(console, findings)
+        _print_advisories(console, summary)
         return
 
     by_package: dict[str, list[Finding]] = {}
@@ -39,12 +46,15 @@ def render_text(
         for finding in by_package[package]:
             _print_finding(console, finding)
 
-    summary = summarize(findings)
     console.print(
         f"\n[bold]{summary.total} finding(s):[/bold] "
         f"[red]{summary.errors} error(s)[/red], [yellow]{summary.warnings} warning(s)[/yellow]"
     )
     _print_suppressed(console, findings)
+    _print_advisories(console, summary)
+
+
+def _print_advisories(console: Console, summary: Summary) -> None:
     for advisory in summary.advisories:
         style = _BUMP_STYLE.get(advisory.bump, "white")
         console.print(

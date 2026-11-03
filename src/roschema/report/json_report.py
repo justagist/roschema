@@ -2,23 +2,30 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ..rules import Finding
 from ..rules.gendocs import docs_url
+from .changes import Change
 from .summary import Coverage, summarize
 
 SCHEMA_VERSION = 1
 
 
 def build_json(
-    findings: list[Finding], *, advisories: bool = True, coverage: Coverage | None = None
+    findings: list[Finding],
+    *,
+    advisories: bool = True,
+    coverage: Coverage | None = None,
+    changes: Sequence[Change] = (),
 ) -> dict[str, object]:
     """Build the JSON-serialisable report document.
 
     ``advisories`` adds per-package semver advice and ``coverage`` the interface
     counts; both only mean something for a comparison against a baseline (not
-    for lint).
+    for lint). Additions among ``changes`` count towards the advice.
     """
-    summary = summarize(findings)
+    summary = summarize(findings, changes)
     counts: dict[str, object] = {
         "total": summary.total,
         "errors": summary.errors,

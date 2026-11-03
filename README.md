@@ -312,12 +312,10 @@ allow every rule for that target.
 package and ends with a summary and a semver advice per package:
 
 - **MAJOR** when the package has a wire- or source-level error;
-- **MINOR** when its only notable change is an added field (RS002) whose
-  severity you lowered to `warn`;
+- **MINOR** when it adds an interface or a constant (neither is a finding,
+  since neither breaks anything), or an added field (RS002) whose severity you
+  lowered to `warn`;
 - **PATCH** otherwise.
-
-The advice only covers reported findings. Additions such as a new interface or
-constant are not findings, so they never raise the advice to MINOR on their own.
 
 **`--format github`** prints what was compared, then emits `::error`/`::warning`
 workflow commands, which GitHub shows as annotations on the PR diff.

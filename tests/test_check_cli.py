@@ -89,6 +89,22 @@ def test_check_reports_coverage(tmp_path):
     )
 
 
+def test_check_advises_minor_for_additions(tmp_path):
+    write_package(tmp_path / "old", "my_msgs", msgs={"S": "uint8 A=1\nuint8 mode\n"})
+    write_package(
+        tmp_path / "new",
+        "my_msgs",
+        msgs={"S": "uint8 A=1\nuint8 B=2\nuint8 mode\n", "T": "int32 t\n"},
+    )
+    args = ["check", str(tmp_path / "new"), "--against", str(tmp_path / "old")]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0
+    assert "no breaking changes found" in result.stdout
+    assert "my_msgs: suggests MINOR version bump (2 additive change(s))" in result.stdout
+    doc = json.loads(runner.invoke(app, [*args, "--format", "json"]).stdout)
+    assert doc["summary"]["advisories"] == {"my_msgs": "MINOR"}
+
+
 def test_check_empty_baseline_is_an_error(tmp_path):
     repo = make_git_repo(tmp_path / "repo")
     (repo / "README").write_text("no interfaces yet\n")

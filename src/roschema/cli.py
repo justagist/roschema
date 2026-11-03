@@ -7,7 +7,7 @@ import json
 import os
 import posixpath
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Annotated
 
@@ -41,6 +41,7 @@ from .loader import load_interfaces
 from .mcap_fs import McapTypeFS
 from .parser import ParseError
 from .report import Coverage, build_github, build_json, coverage, render_lint, render_text
+from .report.changes import Change, additions
 from .rules import Finding, all_lint_rules, all_rules, evaluate, lint_interfaces
 from .rules.gendocs import docs_url, find_rule, render_rule
 from .vfs import GitTreeFS, RealFS, VfsError, git_toplevel
@@ -54,6 +55,30 @@ app = typer.Typer(
 # Rich assumes 80 columns) keep paths and messages on one line.
 console = Console(soft_wrap=True)
 err_console = Console(stderr=True, soft_wrap=True)
+
+
+@dataclass(frozen=True)
+class _Result:
+    """What a check or bag check found, for reporting.
+
+    Args:
+        findings: Finalized findings, including suppressed ones.
+        new_source: Description of the target side.
+        old_source: Description of the baseline side.
+        coverage: Interface counts across both sides.
+        changes: Changes that are not findings, such as added interfaces.
+        interface_files: Each current interface's source file, by interface key.
+        display_prefix: Repo-root-relative prefix for annotation paths.
+    """
+
+    findings: list[Finding]
+    new_source: str
+    old_source: str
+    coverage: Coverage
+    changes: list[Change]
+    interface_files: dict[str, str]
+    display_prefix: str = ""
+
 
 # A bag check asks whether current code can still decode the recording, which is
 # a wire question; constant and other source-level changes do not affect it.
@@ -141,24 +166,26 @@ def check(
         raise typer.Exit(code=2)
 
     try:
-        findings, new_source, old_source, prefix, files, cov = _compute(
+        result = _compute(
             target, lambda root: resolve_baseline(against, root), level, config_path, exclude, deep
         )
     except (VfsError, ParseError, ConfigError) as exc:
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    if old_source.startswith("git:") and Path(against).is_dir():
+    if result.old_source.startswith("git:") and Path(against).is_dir():
         err_console.print(
             f"[dim]note: {against!r} matched a git ref; "
             f"use './{against}' to compare against the directory instead.[/dim]"
         )
     if not allow_empty:
         _require_baseline(
-            cov, f"the baseline ({old_source})", "pass --allow-empty if that is expected"
+            result.coverage,
+            f"the baseline ({result.old_source})",
+            "pass --allow-empty if that is expected",
         )
-    _emit(findings, fmt, new_source, old_source, cov, prefix, files)
-    _exit_for(findings, exit_zero, warnings_as_errors)
+    _emit(result, fmt)
+    _exit_for(result.findings, exit_zero, warnings_as_errors)
 
 
 @app.command(name="bag-check")
@@ -227,14 +254,18 @@ def bag_check(
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    findings = finalize_findings(
-        evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level, BAG_DEFAULT_LEVEL
+    events = diff_interfaces(old_ifaces, new_ifaces)
+    result = _Result(
+        findings=finalize_findings(evaluate(events), config, level, BAG_DEFAULT_LEVEL),
+        new_source=new_source,
+        old_source=old_res.source,
+        coverage=coverage(old_ifaces, new_ifaces),
+        changes=additions(events),
+        interface_files={key: iface.source_file for key, iface in new_ifaces.items()},
     )
-    cov = coverage(old_ifaces, new_ifaces)
-    _require_baseline(cov, "the bag", "check the --exclude patterns")
-    files = {key: iface.source_file for key, iface in new_ifaces.items()}
-    _emit(findings, fmt, new_source, old_res.source, cov, interface_files=files)
-    _exit_for(findings, exit_zero, warnings_as_errors)
+    _require_baseline(result.coverage, "the bag", "check the --exclude patterns")
+    _emit(result, fmt)
+    _exit_for(result.findings, exit_zero, warnings_as_errors)
 
 
 def _resolve_current(
@@ -288,12 +319,8 @@ def _compute(
     config_path: Path | None,
     exclude: list[str] | None,
     deep: bool | None = None,
-) -> tuple[list[Finding], str, str, str, dict[str, str], Coverage]:
-    """Resolve both sides, diff and finalize; the shared check pipeline.
-
-    Also returns each current interface's source file, keyed by interface, and
-    how many interfaces were compared.
-    """
+) -> _Result:
+    """Resolve both sides, diff and finalize; the shared check pipeline."""
     new_res = _resolve_target(target, allow_empty_glob=True)
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
@@ -327,16 +354,23 @@ def _compute(
             raise VfsError(f"target glob {target!r} matched no interface packages on either side")
         old_packages = tuple(p for p in old_packages if p.name in scope)
     old_ifaces = load_interfaces(old_res.vfs, apply_exclude(old_packages, excludes))
-    findings = finalize_findings(evaluate(diff_interfaces(old_ifaces, new_ifaces)), config, level)
+    events = diff_interfaces(old_ifaces, new_ifaces)
+    findings = finalize_findings(evaluate(events), config, level)
     deep_packages = {p.name for p in new_res.packages if config.effective_deep(p.name, deep)}
     if deep_packages:
         transitive = transitive_findings(new_ifaces, findings)
         findings += finalize_findings(
             [f for f in transitive if f.package in deep_packages], config, level
         )
-    files = {key: iface.source_file for key, iface in new_ifaces.items()}
-    cov = coverage(old_ifaces, new_ifaces)
-    return findings, new_res.source, old_res.source, prefix, files, cov
+    return _Result(
+        findings=findings,
+        new_source=new_res.source,
+        old_source=old_res.source,
+        coverage=coverage(old_ifaces, new_ifaces),
+        changes=additions(events),
+        interface_files={key: iface.source_file for key, iface in new_ifaces.items()},
+        display_prefix=prefix,
+    )
 
 
 def _note_skipped_schemas(res: Resolution) -> None:
@@ -379,23 +413,16 @@ def _exit_for(findings: list[Finding], exit_zero: bool, warnings_as_errors: bool
     raise typer.Exit(code=1 if has_failure else 0)
 
 
-def _emit(
-    findings: list[Finding],
-    fmt: str,
-    new_source: str,
-    old_source: str,
-    cov: Coverage,
-    display_prefix: str = "",
-    interface_files: dict[str, str] | None = None,
-) -> None:
+def _emit(result: _Result, fmt: str) -> None:
+    findings, cov, changes = result.findings, result.coverage, result.changes
     if fmt == "json":
-        typer.echo(json.dumps(build_json(findings, coverage=cov), indent=2))
+        typer.echo(json.dumps(build_json(findings, coverage=cov, changes=changes), indent=2))
     elif fmt == "github":
         typer.echo(cov.describe())
-        for line in build_github(findings, display_prefix, interface_files):
+        for line in build_github(findings, result.display_prefix, result.interface_files):
             typer.echo(line)
     else:
-        render_text(findings, console, new_source, old_source, cov)
+        render_text(findings, console, result.new_source, result.old_source, cov, changes)
 
 
 @app.command()

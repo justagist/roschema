@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections import Counter
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
 from ..rules import Finding
+from .changes import ADDED, Change
 
 
 @dataclass(frozen=True)
@@ -79,8 +81,12 @@ def coverage(old: Collection[str], new: Collection[str]) -> Coverage:
     )
 
 
-def summarize(findings: list[Finding]) -> Summary:
-    """Compute counts and per-package advisories from finalized findings."""
+def summarize(findings: list[Finding], changes: Sequence[Change] = ()) -> Summary:
+    """Compute counts and per-package advisories from finalized findings.
+
+    Additions among ``changes`` (an added interface or constant) are not
+    findings, but they make a package's advice at least MINOR.
+    """
     reported = [f for f in findings if not f.suppressed]
     errors = sum(1 for f in reported if f.severity == "error")
     warnings = sum(1 for f in reported if f.severity == "warn")
@@ -89,7 +95,11 @@ def summarize(findings: list[Finding]) -> Summary:
     by_package: dict[str, list[Finding]] = {}
     for finding in reported:
         by_package.setdefault(finding.package, []).append(finding)
-    advisories = tuple(_advise(package, by_package[package]) for package in sorted(by_package))
+    added = Counter(c.package for c in changes if c.reason in ADDED)
+    advisories = tuple(
+        _advise(package, by_package.get(package, []), added[package])
+        for package in sorted(by_package.keys() | added.keys())
+    )
     return Summary(
         total=len(reported),
         errors=errors,
@@ -99,14 +109,14 @@ def summarize(findings: list[Finding]) -> Summary:
     )
 
 
-def _advise(package: str, findings: list[Finding]) -> PackageAdvisory:
+def _advise(package: str, findings: list[Finding], added: int) -> PackageAdvisory:
     wire_source_errors = [
         f for f in findings if f.severity == "error" and set(f.levels) & {"wire", "source"}
     ]
     if wire_source_errors:
         n = len(wire_source_errors)
         return PackageAdvisory(package, "MAJOR", f"{n} wire/source-breaking change(s)")
-    additions = [f for f in findings if f.rule == "RS002"]
+    additions = added + sum(1 for f in findings if f.rule == "RS002")
     if additions:
-        return PackageAdvisory(package, "MINOR", f"{len(additions)} additive change(s)")
+        return PackageAdvisory(package, "MINOR", f"{additions} additive change(s)")
     return PackageAdvisory(package, "PATCH", f"{len(findings)} change(s)")

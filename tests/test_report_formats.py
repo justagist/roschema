@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from roschema.report import build_github, build_json, coverage, summarize
+from roschema.report.changes import NEW_CONSTANT, NEW_INTERFACE, Change
 from roschema.rules import Finding
 
 
@@ -92,6 +93,24 @@ def test_advisory_major():
 def test_advisory_minor_for_additive_non_error():
     s = summarize([_finding("RS002", severity="warn", levels=("wire", "source"))])
     assert s.advisories[0].bump == "MINOR"
+
+
+def test_advisory_minor_for_added_interface_or_constant():
+    added = [
+        Change("other/msg/New", None, "", "interface added", NEW_INTERFACE),
+        Change("demo/msg/T", "message", "MODE_X", "constant added: uint8 MODE_X=3", NEW_CONSTANT),
+    ]
+    s = summarize([_finding("RS030", severity="warn", levels=("behavior",))], added)
+    assert [(a.package, a.bump, a.reason) for a in s.advisories] == [
+        ("demo", "MINOR", "1 additive change(s)"),
+        ("other", "MINOR", "1 additive change(s)"),
+    ]
+
+
+def test_advisory_major_outranks_additions():
+    added = [Change("demo/msg/New", None, "", "interface added", NEW_INTERFACE)]
+    s = summarize([_finding("RS001", levels=("wire", "source"))], added)
+    assert s.advisories[0].bump == "MAJOR"
 
 
 def test_advisory_patch():

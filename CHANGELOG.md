@@ -12,6 +12,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The semver advice suggests MINOR for a package that adds an interface or a
+  constant, and is printed even when there are no findings.
 - The coverage line names the first few new interfaces and says "new" and
   "removed" instead of "only in the target" and "only in the baseline".
 
