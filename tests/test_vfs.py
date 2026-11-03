@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
-from _helpers import git_commit_all, make_git_repo, write_package
+from _helpers import git_commit_all, make_git_repo, set_git_identity, write_package
 from roschema.vfs import GitTreeFS, RealFS, VfsError, _glob_to_regex, rev_parse_verify
 
 
@@ -68,6 +70,49 @@ def test_gittreefs_reads_historical_content(tmp_path):
     assert old.read_text("pkg_a/msg/Foo.msg") == "int32 a\n"
     new = GitTreeFS(repo, "HEAD")
     assert new.read_text("pkg_a/msg/Foo.msg") == "int32 a\nint32 b\n"
+
+
+def _add_submodule(repo, sub, path):
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "protocol.file.allow=always", "submodule", "add",
+         "-q", str(sub), path],
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_gittreefs_reads_submodules_at_recorded_commit(tmp_path):
+    sub = make_git_repo(tmp_path / "sub")
+    write_package(sub, "pkg_b", msgs={"Bar": "int32 b\n"})
+    git_commit_all(sub, "v1")
+    repo = make_git_repo(tmp_path / "repo")
+    _add_submodule(repo, sub, "vendor")
+    git_commit_all(repo, "add submodule")
+    set_git_identity(repo / "vendor")
+    (repo / "vendor" / "pkg_b" / "msg" / "Bar.msg").write_text("int64 b\n")
+    git_commit_all(repo / "vendor", "v2")  # moves the checkout, not the recorded commit
+
+    fs = GitTreeFS(repo, "HEAD")
+    assert fs.glob("**/*.msg") == ["vendor/pkg_b/msg/Bar.msg"]
+    assert fs.read_text("vendor/pkg_b/msg/Bar.msg") == "int32 b\n"
+    assert fs.missing_submodules == []
+
+
+def test_gittreefs_reports_unavailable_submodule_commit(tmp_path):
+    sub = make_git_repo(tmp_path / "sub")
+    write_package(sub, "pkg_b", msgs={"Bar": "int32 b\n"})
+    git_commit_all(sub, "v1")
+    repo = make_git_repo(tmp_path / "repo")
+    _add_submodule(repo, sub, "vendor")
+    subprocess.run(
+        ["git", "-C", str(repo), "update-index", "--cacheinfo", f"160000,{'1' * 40},vendor"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "unknown commit"], check=True)
+
+    fs = GitTreeFS(repo, "HEAD")
+    assert fs.files == [".gitmodules"]
+    assert fs.missing_submodules == ["vendor"]
 
 
 def test_gittreefs_bad_ref_raises(tmp_path):

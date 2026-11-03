@@ -233,6 +233,12 @@ def _compute(
     if not isinstance(new_res.vfs, RealFS):
         raise VfsError("target must be a directory or workspace")
     old_res = resolve_old(new_res.vfs.root)
+    if isinstance(old_res.vfs, GitTreeFS):
+        for path in old_res.vfs.missing_submodules:
+            err_console.print(
+                f"[yellow]warning:[/yellow] the baseline commit of submodule {path!r} is "
+                "not available locally, so its packages are not compared"
+            )
     config = load_config(new_res.vfs.root, new_res.packages, config_path)
     excludes = exclude or []
     new_ifaces = load_interfaces(new_res.vfs, apply_exclude(new_res.packages, excludes))

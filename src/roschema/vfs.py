@@ -162,22 +162,66 @@ class GitTreeFS:
     """VFS backed by a git tree object, read without touching the working tree.
 
     Uses ``git ls-tree`` (cached) for listing and ``git show`` for contents.
+    Initialised submodules are read at the commit ``ref`` records for them, so
+    their packages are compared like any other.
     """
 
     def __init__(self, repo_root: str | Path, ref: str) -> None:
         self.repo_root = Path(repo_root)
         self.ref = ref
         self._files: list[str] | None = None
+        self._submodules: dict[str, GitTreeFS] = {}
+        self._missing: list[str] = []
 
     @property
     def files(self) -> list[str]:
         """Repo-relative paths tracked at ``ref`` (cached across calls)."""
         if self._files is None:
-            out = self._git(["ls-tree", "-r", "--name-only", self.ref])
-            self._files = [line for line in out.splitlines() if line]
+            files: list[str] = []
+            out = self._git(["ls-tree", "-r", "-z", self.ref])
+            for entry in filter(None, out.split("\0")):
+                meta, path = entry.split("\t", 1)
+                mode, _, sha = meta.split()
+                if mode == "160000":
+                    files += self._submodule_files(path, sha)
+                else:
+                    files.append(path)
+            self._files = sorted(files)
         return self._files
 
+    @property
+    def missing_submodules(self) -> list[str]:
+        """Initialised submodules whose recorded commit is not available locally."""
+        _ = self.files
+        nested = [
+            f"{prefix}/{path}"
+            for prefix, sub in self._submodules.items()
+            for path in sub.missing_submodules
+        ]
+        return sorted(self._missing + nested)
+
+    def _submodule_files(self, path: str, sha: str) -> list[str]:
+        """Register an initialised submodule and return its files under ``path``."""
+        sub_root = self.repo_root / path
+        if not (sub_root / ".git").exists():
+            return []  # not initialised: the working tree has nothing there either
+        try:
+            subprocess.run(
+                ["git", "-C", str(sub_root), "cat-file", "-e", f"{sha}^{{commit}}"],
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            self._missing.append(path)
+            return []
+        sub = GitTreeFS(sub_root, sha)
+        self._submodules[path] = sub
+        return [f"{path}/{f}" for f in sub.files]
+
     def read_text(self, path: str) -> str:
+        for prefix, sub in self._submodules.items():
+            if path.startswith(prefix + "/"):
+                return sub.read_text(path[len(prefix) + 1 :])
         return self._git(["show", f"{self.ref}:{path}"])
 
     def glob(self, pattern: str) -> list[str]:

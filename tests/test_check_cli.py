@@ -180,6 +180,26 @@ def test_check_package_name_from_ament_warns(tmp_path, monkeypatch):
     assert "warning: 'my_msgs' is not a source package" in result.output
 
 
+def test_check_from_superproject_compares_submodule_packages(tmp_path, monkeypatch):
+    sub = make_git_repo(tmp_path / "sub")
+    write_package(sub, "my_msgs", msgs={"P": "float32 x\n"})
+    git_commit_all(sub, "v1")
+    repo = make_git_repo(tmp_path / "repo")
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "protocol.file.allow=always", "submodule", "add",
+         "-q", str(sub), "src/vendor"],
+        check=True,
+        capture_output=True,
+    )
+    git_commit_all(repo, "add submodule")
+    (repo / "src" / "vendor" / "my_msgs" / "msg" / "P.msg").write_text("float64 x\n")
+    monkeypatch.chdir(repo)
+
+    result = runner.invoke(app, ["check", "--against", "HEAD"])
+    assert result.exit_code == 1
+    assert "RS003" in result.output
+
+
 def test_baseline_git_ref_shadows_dir_with_note(tmp_path, monkeypatch):
     repo = make_git_repo(tmp_path / "repo")
     write_package(repo / "pkgs", "m", msgs={"P": "float32 x\n"})
