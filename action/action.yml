@@ -38,7 +38,7 @@ inputs:
   version:
     description: >-
       roschema requirement for uvx. Unpinned runs the latest release (refreshed
-      on every run, even with a uv cache); pin it (e.g. "roschema==0.5.0") for
+      on every run, even with a uv cache); pin it (e.g. "roschema==0.6.0") for
       reproducible results.
     default: roschema
 
