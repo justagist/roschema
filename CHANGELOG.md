@@ -3,6 +3,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/), and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-04
+
+### Changed
+
+- The `introspection` level now sits between `wire` and `source`: it reports
+  wire breaks plus field renames, without the constant rules. Before, it
+  reported exactly what `source` did. RS005 is labelled introspection-breaking.
+
 ## [0.5.0] - 2026-11-03
 
 ### Added

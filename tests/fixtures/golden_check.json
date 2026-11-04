@@ -201,7 +201,7 @@
     {
       "rule": "RS005",
       "severity": "error",
-      "level": "source",
+      "level": "introspection",
       "package": "demo_msgs",
       "interface": "demo_msgs/msg/Renamed",
       "section": "message",

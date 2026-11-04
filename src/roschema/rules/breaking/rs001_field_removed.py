@@ -18,7 +18,7 @@ RULE = Rule(
         "CDR is positional, so removing a field shifts every following field and "
         "breaks the wire layout, the generated API and name-based tooling."
     ),
-    levels=("wire", "source", "introspection"),
+    levels=("wire", "introspection", "source"),
     default_severity=Severity.ERROR,
     handles=(ChangeType.FIELD_REMOVED,),
     message=_message,

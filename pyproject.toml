@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "roschema"
-version = "0.5.0"
+version = "0.6.0"
 description = "Breaking-change detection, linting and formatting for ROS 2 interface definitions"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
-authors = [{ name = "Saif Sidhik", email = "saif.sidhik@helloleap.ai" }]
+authors = [{ name = "Saif Sidhik", email = "mail@saifsidhik.page" }]
 keywords = ["ros2", "ros", "interface", "msg", "srv", "action", "breaking-change", "lint"]
 classifiers = [
     "Development Status :: 3 - Alpha",

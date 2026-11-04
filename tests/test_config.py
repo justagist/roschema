@@ -104,6 +104,9 @@ def test_finalize_level_filter():
     f = _finding("RSX", levels=("introspection",))
     assert finalize_findings([f], Config(), "wire") == []  # not in wire bundle
     assert len(finalize_findings([f], Config(), "introspection")) == 1
+    constant = _finding("RSY", levels=("source",))
+    assert finalize_findings([constant], Config(), "introspection") == []  # bags ignore constants
+    assert len(finalize_findings([constant], Config(), "source")) == 1
 
 
 def test_finalize_inline_suppression():
