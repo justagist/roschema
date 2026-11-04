@@ -69,9 +69,9 @@ cumulative bundle of levels to report; the default is `source`.
 | Level | Reports | Example |
 |---|---|---|
 | `wire` | CDR byte-stream compatibility only | a field added (RS002) |
-| `source` | wire + generated C++/Python API | a constant removed (RS020) |
-| `introspection` | source + name-based tooling (bags, echo, YAML) | a field renamed (RS005) |
-| `behavior` | introspection + semantics (defaults, constant values) | a default changed (RS030) |
+| `introspection` | wire + field names, for name-based tooling (bags, echo, YAML) | a field renamed (RS005) |
+| `source` | introspection + generated C++/Python API, including constants | a constant removed (RS020) |
+| `behavior` | source + semantics (defaults, constant values) | a default changed (RS030) |
 
 Levels decide **what is reported**; each rule's **severity** (`error`, `warn`
 or `off`) decides whether a reported finding fails the run. Only errors fail;
@@ -272,7 +272,7 @@ precedence over `pyproject.toml`.
 
 ```toml
 [check]
-level = "source"       # wire | source | introspection | behavior
+level = "source"       # wire | introspection | source | behavior
 deep = false           # --deep / --no-deep overrides this
 
 [check.rules]

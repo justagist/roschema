@@ -19,7 +19,7 @@ RULE = Rule(
         "The wire bytes are unchanged, but generated field accessors and every "
         "name-based tool (bags, echo, YAML config) break."
     ),
-    levels=("source", "introspection"),
+    levels=("introspection", "source"),
     default_severity=Severity.ERROR,
     handles=(ChangeType.FIELD_RENAMED,),
     message=_message,

@@ -24,7 +24,7 @@ def parse_inline_ignores(comment: str | None) -> tuple[str, ...]:
 
 
 # Compatibility levels, ordered most- to least- wire-significant.
-LEVEL_ORDER = ("wire", "source", "introspection", "behavior")
+LEVEL_ORDER = ("wire", "introspection", "source", "behavior")
 LEVEL_LABEL = {
     "wire": "wire-breaking",
     "source": "source-breaking",

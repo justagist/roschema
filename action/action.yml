@@ -13,7 +13,7 @@ inputs:
     default: origin/main
   level:
     description: >-
-      Reporting level (wire, source, introspection, behavior). Empty uses the
+      Reporting level (wire, introspection, source, behavior). Empty uses the
       level configured in roschema.toml, else source.
     default: ""
   format:

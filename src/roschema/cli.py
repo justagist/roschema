@@ -136,7 +136,7 @@ def check(
     ] = "text",
     level: Annotated[
         str | None,
-        typer.Option("--level", help="Reporting level: wire, source, introspection, behavior."),
+        typer.Option("--level", help="Reporting level: wire, introspection, source, behavior."),
     ] = None,
     config_path: Annotated[
         Path | None,
@@ -232,7 +232,7 @@ def bag_check(
         str | None,
         typer.Option(
             "--level",
-            help="Reporting level: wire (default for bags), source, introspection, behavior.",
+            help="Reporting level: wire (default for bags), introspection, source, behavior.",
         ),
     ] = None,
     config_path: Annotated[

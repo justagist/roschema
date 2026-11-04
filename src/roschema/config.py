@@ -26,9 +26,9 @@ else:  # pragma: no cover - exercised only on py3.10
 # wire-significant than it.
 LEVEL_BUNDLES: dict[str, frozenset[str]] = {
     "wire": frozenset({"wire"}),
-    "source": frozenset({"wire", "source"}),
-    "introspection": frozenset({"wire", "source", "introspection"}),
-    "behavior": frozenset({"wire", "source", "introspection", "behavior"}),
+    "introspection": frozenset({"wire", "introspection"}),
+    "source": frozenset({"wire", "introspection", "source"}),
+    "behavior": frozenset({"wire", "introspection", "source", "behavior"}),
 }
 DEFAULT_LEVEL = "source"
 _SEVERITIES = frozenset({"off", "warn", "error"})
